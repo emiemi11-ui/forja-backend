@@ -1,0 +1,381 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum Role {
+  USER
+  COACH
+  NUTRITIONIST
+  ADMIN
+}
+
+enum Plan {
+  FREE
+  PRO
+  TEAM
+  COACH
+  NUT
+}
+
+enum TeamType {
+  FREE
+  PAID
+  PRIVATE
+}
+
+enum TeamRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model User {
+  id             String   @id @default(cuid())
+  email          String   @unique
+  password       String
+  name           String
+  role           Role     @default(USER)
+  plan           Plan     @default(FREE)
+  avatar         String?
+  avatarUrl      String?
+  bio            String?
+  specialization String?
+  certifications String?
+  experience     Int?
+  goal           String?
+  weight         Float?
+  height         Float?
+  level          Int      @default(1)
+  xp             Int      @default(0)
+  streak         Int      @default(0)
+  isDemo         Boolean  @default(false)
+  blocked        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  teamMembers    TeamMember[]
+  joinRequests   JoinRequest[]
+  posts          Post[]
+  comments       Comment[]
+  likes          Like[]
+  sentMessages   Message[]        @relation("sender")
+  conversations1 Conversation[]   @relation("user1")
+  conversations2 Conversation[]   @relation("user2")
+  chatMessages   ChatMessage[]
+  workouts       Workout[]
+  sleepEntries   SleepEntry[]
+  nutritionLogs  NutritionLog[]
+  goals          UserGoals?
+  coachClients   CoachClient[]    @relation("coach")
+  athleteOf      CoachClient[]    @relation("athlete")
+  nutClients     NutClient[]      @relation("nutritionist")
+  clientOfNut    NutClient[]      @relation("nutClient")
+  achievements   UserAchievement[]
+  auditLogs      AuditLog[]
+
+  @@map("users")
+}
+
+model UserGoals {
+  id      String @id @default(cuid())
+  userId  String @unique
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kcal    Int    @default(2200)
+  protein Int    @default(150)
+  carbs   Int    @default(250)
+  fat     Int    @default(70)
+  water   Float  @default(3)
+  steps   Int    @default(10000)
+  sleep   Float  @default(8)
+
+  @@map("user_goals")
+}
+
+model Team {
+  id          String   @id @default(cuid())
+  name        String
+  slug        String   @unique
+  description String?
+  category    String   @default("Fitness")
+  teamType    TeamType @default(FREE)
+  isPublic    Boolean  @default(true)
+  avatarUrl   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members      TeamMember[]
+  joinRequests JoinRequest[]
+  posts        Post[]
+  chatMessages ChatMessage[]
+
+  @@map("teams")
+}
+
+model TeamMember {
+  id       String   @id @default(cuid())
+  userId   String
+  teamId   String
+  role     TeamRole @default(MEMBER)
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("team_members")
+}
+
+model JoinRequest {
+  id        String   @id @default(cuid())
+  userId    String
+  teamId    String
+  status    String   @default("PENDING")
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, teamId])
+  @@map("join_requests")
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  content   String
+  imageUrl  String?
+  authorId  String
+  teamId    String?
+  likes     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  team     Team?     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  comments Comment[]
+  likedBy  Like[]
+
+  @@map("posts")
+}
+
+model Comment {
+  id        String   @id @default(cuid())
+  content   String
+  authorId  String
+  postId    String
+  createdAt DateTime @default(now())
+
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@map("comments")
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  user1Id   String
+  user2Id   String
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  user1    User      @relation("user1", fields: [user1Id], references: [id], onDelete: Cascade)
+  user2    User      @relation("user2", fields: [user2Id], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@unique([user1Id, user2Id])
+  @@map("conversations")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  content        String
+  senderId       String
+  conversationId String
+  read           Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  sender       User         @relation("sender", fields: [senderId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  content   String
+  senderId  String
+  teamId    String
+  createdAt DateTime @default(now())
+
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  team   Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@map("chat_messages")
+}
+
+model Workout {
+  id        String   @id @default(cuid())
+  name      String
+  userId    String
+  status    String   @default("PLANNED")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises WorkoutExercise[]
+
+  @@map("workouts")
+}
+
+model WorkoutExercise {
+  id             String  @id @default(cuid())
+  workoutId      String
+  name           String
+  sets           Int     @default(3)
+  reps           Int     @default(10)
+  weight         Float?
+  restSec        Int     @default(90)
+  done           Boolean @default(false)
+  order          Int     @default(0)
+  setsCompleted  Int     @default(0)
+
+  workout Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+
+  @@map("workout_exercises")
+}
+
+model Like {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@map("post_likes")
+}
+
+model NutritionLog {
+  id       String   @id @default(cuid())
+  userId   String
+  date     DateTime @default(now())
+  mealType String
+  foodName String
+  kcal     Int      @default(0)
+  protein  Float    @default(0)
+  carbs    Float    @default(0)
+  fat      Float    @default(0)
+  quantity Float    @default(1)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("nutrition_logs")
+}
+
+model SleepEntry {
+  id       String   @id @default(cuid())
+  userId   String
+  date     DateTime @default(now())
+  bedTime  String
+  wakeTime String
+  hours    Float
+  quality  Int      @default(3)
+  score    Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sleep_entries")
+}
+
+model CoachClient {
+  id        String   @id @default(cuid())
+  coachId   String
+  athleteId String
+  status    String   @default("PENDING")
+  notes     String?
+  createdAt DateTime @default(now())
+
+  coach   User @relation("coach", fields: [coachId], references: [id], onDelete: Cascade)
+  athlete User @relation("athlete", fields: [athleteId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, athleteId])
+  @@map("coach_clients")
+}
+
+model NutClient {
+  id             String   @id @default(cuid())
+  nutritionistId String
+  clientId       String
+  status         String   @default("PENDING")
+  templateId     String?
+  createdAt      DateTime @default(now())
+
+  nutritionist User         @relation("nutritionist", fields: [nutritionistId], references: [id], onDelete: Cascade)
+  client       User         @relation("nutClient", fields: [clientId], references: [id], onDelete: Cascade)
+  template     NutTemplate? @relation(fields: [templateId], references: [id])
+
+  @@unique([nutritionistId, clientId])
+  @@map("nut_clients")
+}
+
+model NutTemplate {
+  id        String   @id @default(cuid())
+  name      String
+  kcal      Int
+  protein   Int
+  carbs     Int
+  fat       Int
+  authorId  String
+  createdAt DateTime @default(now())
+
+  clients NutClient[]
+
+  @@map("nut_templates")
+}
+
+model UserAchievement {
+  id       String   @id @default(cuid())
+  userId   String
+  badge    String
+  title    String
+  earnedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badge])
+  @@map("user_achievements")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String
+  type      String
+  detail    String
+  status    String   @default("INFO")
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model ContactSubmission {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  type      String   @default("contact")
+  status    String   @default("nou")
+  createdAt DateTime @default(now())
+
+  @@map("contact_submissions")
+}

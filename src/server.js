@@ -33,6 +33,7 @@ const staticOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:4173',
+  'https://*.vercel.app',
 ].filter(Boolean);
 
 function originAllowed(origin) {
@@ -115,14 +116,38 @@ app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISO
 const api = express.Router();
 app.use('/api', api);
 
+// Public + auth routes
 api.use('/auth', authRoutes);
 api.use('/', publicRoutes);
 
 // ══ AUTHENTICATED ROUTES ══
-// User & dashboard
+
+// Alias router helper.
+// We can't simply `api.use('/dashboard', userRoutes)` because userRoutes also
+// handles `/avatar`, `/goals`, etc. and Express gets confused with prefix
+// concatenation when the same router is mounted multiple times. Instead we
+// build tiny passthrough routers that rewrite req.url correctly before
+// delegating to the real router.
+function aliasRouter(targetRouter, internalPath) {
+  const r = express.Router({ mergeParams: true });
+  r.use((req, res, next) => {
+    // Express has stripped the mount prefix, so req.url currently is "/"
+    // or "/<sub>". Build the path the inner router expects.
+    const sub = req.url === '/' ? '' : req.url;
+    req.url = internalPath + sub;
+    return targetRouter(req, res, next);
+  });
+  return r;
+}
+
+// User profile + avatar
 api.use('/user', userRoutes);
-api.use('/dashboard', (req, res, next) => { req.url = '/dashboard'; next(); }, userRoutes);
-api.use('/goals', (req, res, next) => { req.url = '/goals'; next(); }, userRoutes);
+
+// Dashboard alias → forwards GET /api/dashboard to userRoutes.GET /dashboard
+api.use('/dashboard', aliasRouter(userRoutes, '/dashboard'));
+
+// Goals alias → forwards /api/goals (GET/PUT) to userRoutes.* /goals
+api.use('/goals', aliasRouter(userRoutes, '/goals'));
 
 // Teams
 api.use('/teams', teamRoutes);
@@ -146,14 +171,18 @@ api.use('/nutritionist', nutritionistRoutes);
 api.use('/admin', adminRoutes);
 
 // Athlete-specific (sleep, meals, exercises, workouts, discover, contact)
-api.use('/sleep', (req, res, next) => { req.url = '/sleep' + req.url; next(); }, athleteRoutes);
-api.use('/meals', (req, res, next) => { req.url = '/meals' + req.url; next(); }, athleteRoutes);
-api.use('/exercises', (req, res, next) => { req.url = '/exercises' + req.url; next(); }, athleteRoutes);
-api.use('/workout', (req, res, next) => { req.url = '/workout' + req.url; next(); }, athleteRoutes);
-api.use('/discover', (req, res, next) => { req.url = `/discover${req.url === '/' ? '' : req.url}`; next(); }, athleteRoutes);
-api.use('/contact', (req, res, next) => { req.url = '/contact'; next(); }, athleteRoutes);
-api.use('/food', (req, res, next) => { req.url = '/food' + req.url; next(); }, athleteRoutes);
-api.use('/today', (req, res, next) => { req.url = '/today' + req.url; next(); }, athleteRoutes);
+// athleteRoutes uses full paths like `/sleep`, `/meals/:id`, `/workout/current`,
+// so we use alias routers that prepend the correct prefix before delegating.
+api.use('/sleep', aliasRouter(athleteRoutes, '/sleep'));
+api.use('/meals', aliasRouter(athleteRoutes, '/meals'));
+api.use('/exercises', aliasRouter(athleteRoutes, '/exercises'));
+api.use('/workout', aliasRouter(athleteRoutes, '/workout'));
+api.use('/discover', aliasRouter(athleteRoutes, '/discover'));
+api.use('/food', aliasRouter(athleteRoutes, '/food'));
+api.use('/today', aliasRouter(athleteRoutes, '/today'));
+api.use('/contact', aliasRouter(athleteRoutes, '/contact'));
+
+// Challenges, search, achievements
 api.use('/challenges', challengesRoutes);
 api.use('/search', searchRoutes);
 api.use('/achievements', achievementsRoutes);

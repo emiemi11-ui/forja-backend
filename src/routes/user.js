@@ -225,4 +225,123 @@ router.get('/dashboard', async (req, res) => {
   });
 });
 
+// ============================================================================
+// PROFESSIONAL RELATIONSHIPS (athlete <-> coach / nutritionist)
+// ============================================================================
+
+// GET /api/user/professionals
+// Returneaza coach-ii si nutritionistii curentului user (atletul)
+router.get('/professionals', async (req, res) => {
+  const [coachLinks, nutLinks] = await Promise.all([
+    prisma.coachClient.findMany({
+      where: { athleteId: req.user.id },
+      include: {
+        coach: {
+          select: { id: true, name: true, email: true, avatar: true, avatarUrl: true, specialization: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.nutClient.findMany({
+      where: { clientId: req.user.id },
+      include: {
+        nutritionist: {
+          select: { id: true, name: true, email: true, avatar: true, avatarUrl: true, specialization: true, role: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  res.json({
+    coaches: coachLinks.map((link) => ({
+      linkId: link.id,
+      status: link.status,
+      since: link.createdAt,
+      professional: link.coach,
+      type: 'COACH',
+    })),
+    nutritionists: nutLinks.map((link) => ({
+      linkId: link.id,
+      status: link.status,
+      since: link.createdAt,
+      professional: link.nutritionist,
+      type: 'NUTRITIONIST',
+    })),
+  });
+});
+
+// POST /api/user/professionals/request
+// Atletul cere unui profesionist sa fie coach sau nutritionist
+router.post('/professionals/request', async (req, res) => {
+  const { professionalId } = req.body || {};
+  if (!professionalId) return res.status(400).json({ error: 'professionalId lipseste' });
+  if (professionalId === req.user.id) return res.status(400).json({ error: 'Nu te poti adauga pe tine' });
+
+  const professional = await prisma.user.findUnique({
+    where: { id: professionalId },
+    select: { id: true, role: true, name: true },
+  });
+  if (!professional) return res.status(404).json({ error: 'Profesionist inexistent' });
+
+  if (professional.role === 'COACH') {
+    const link = await prisma.coachClient.upsert({
+      where: { coachId_athleteId: { coachId: professional.id, athleteId: req.user.id } },
+      create: { coachId: professional.id, athleteId: req.user.id, status: 'PENDING', notes: 'Cerere de la atlet' },
+      update: {}, // daca exista deja, nu suprascriu nimic (pastrez statusul actual)
+    });
+    // Notifica coach-ul prin Socket.IO
+    global.__io?.to(`user:${professional.id}`).emit('professional:request', {
+      type: 'COACH',
+      linkId: link.id,
+      from: { id: req.user.id, name: req.user.name },
+    });
+    return res.json({ ok: true, linkId: link.id, status: link.status, type: 'COACH' });
+  }
+
+  if (professional.role === 'NUTRITIONIST') {
+    const link = await prisma.nutClient.upsert({
+      where: { nutritionistId_clientId: { nutritionistId: professional.id, clientId: req.user.id } },
+      create: { nutritionistId: professional.id, clientId: req.user.id, status: 'PENDING' },
+      update: {},
+    });
+    global.__io?.to(`user:${professional.id}`).emit('professional:request', {
+      type: 'NUTRITIONIST',
+      linkId: link.id,
+      from: { id: req.user.id, name: req.user.name },
+    });
+    return res.json({ ok: true, linkId: link.id, status: link.status, type: 'NUTRITIONIST' });
+  }
+
+  return res.status(400).json({ error: 'Userul selectat nu e coach sau nutritionist' });
+});
+
+// DELETE /api/user/professionals/:type/:linkId
+// Atletul anuleaza cererea sau se desfasoara de profesionist
+router.delete('/professionals/:type/:linkId', async (req, res) => {
+  const { type, linkId } = req.params;
+
+  if (type === 'COACH') {
+    const link = await prisma.coachClient.findUnique({ where: { id: linkId } });
+    if (!link || link.athleteId !== req.user.id) {
+      return res.status(404).json({ error: 'Legatura inexistenta' });
+    }
+    await prisma.coachClient.delete({ where: { id: linkId } });
+    global.__io?.to(`user:${link.coachId}`).emit('professional:link:removed', { linkId, by: req.user.id });
+    return res.json({ ok: true });
+  }
+
+  if (type === 'NUTRITIONIST') {
+    const link = await prisma.nutClient.findUnique({ where: { id: linkId } });
+    if (!link || link.clientId !== req.user.id) {
+      return res.status(404).json({ error: 'Legatura inexistenta' });
+    }
+    await prisma.nutClient.delete({ where: { id: linkId } });
+    global.__io?.to(`user:${link.nutritionistId}`).emit('professional:link:removed', { linkId, by: req.user.id });
+    return res.json({ ok: true });
+  }
+
+  return res.status(400).json({ error: 'Tip necunoscut (asteptat COACH sau NUTRITIONIST)' });
+});
+
 export default router;

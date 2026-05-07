@@ -196,10 +196,69 @@ router.post('/athletes/invite', async (req, res) => {
   const { email, goal, plan } = req.body;
   const athlete = await prisma.user.findUnique({ where: { email } });
   if (!athlete) return res.status(404).json({ error: 'Utilizator inexistent' });
-  await prisma.coachClient.upsert({
+  if (athlete.id === req.user.id) return res.status(400).json({ error: 'Nu te poti adauga pe tine' });
+
+  const link = await prisma.coachClient.upsert({
     where: { coachId_athleteId: { coachId: req.user.id, athleteId: athlete.id } },
-    create: { coachId: req.user.id, athleteId: athlete.id, notes: goal || plan || null },
-    update: { status: 'PENDING', notes: goal || plan || undefined },
+    // Cand coach-ul invita, statusul e PENDING_ATHLETE (asteapta accept de la atlet)
+    create: { coachId: req.user.id, athleteId: athlete.id, status: 'PENDING_ATHLETE', notes: goal || plan || null },
+    update: { status: 'PENDING_ATHLETE', notes: goal || plan || undefined },
+  });
+  // Notifica atletul
+  global.__io?.to(`user:${athlete.id}`).emit('professional:invite', {
+    type: 'COACH',
+    linkId: link.id,
+    from: { id: req.user.id, name: req.user.name },
+  });
+  res.json({ ok: true, linkId: link.id });
+});
+
+// GET /api/coach/requests
+// Cereri venite de la atleti (statusul e PENDING - atletul cere coach-ului)
+router.get('/requests', async (req, res) => {
+  const requests = await prisma.coachClient.findMany({
+    where: { coachId: req.user.id, status: 'PENDING' },
+    include: {
+      athlete: { select: { id: true, name: true, email: true, avatar: true, avatarUrl: true, goal: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(requests.map((r) => ({
+    linkId: r.id,
+    athlete: r.athlete,
+    notes: r.notes,
+    requestedAt: r.createdAt,
+  })));
+});
+
+// POST /api/coach/requests/:linkId/accept
+router.post('/requests/:linkId/accept', async (req, res) => {
+  const link = await prisma.coachClient.findUnique({ where: { id: req.params.linkId } });
+  if (!link || link.coachId !== req.user.id) {
+    return res.status(404).json({ error: 'Cerere inexistenta' });
+  }
+  const updated = await prisma.coachClient.update({
+    where: { id: link.id },
+    data: { status: 'ACCEPTED' },
+  });
+  global.__io?.to(`user:${link.athleteId}`).emit('professional:request:accepted', {
+    type: 'COACH',
+    linkId: link.id,
+    coach: { id: req.user.id, name: req.user.name },
+  });
+  res.json({ ok: true, status: updated.status });
+});
+
+// POST /api/coach/requests/:linkId/reject
+router.post('/requests/:linkId/reject', async (req, res) => {
+  const link = await prisma.coachClient.findUnique({ where: { id: req.params.linkId } });
+  if (!link || link.coachId !== req.user.id) {
+    return res.status(404).json({ error: 'Cerere inexistenta' });
+  }
+  await prisma.coachClient.delete({ where: { id: link.id } });
+  global.__io?.to(`user:${link.athleteId}`).emit('professional:request:rejected', {
+    type: 'COACH',
+    linkId: link.id,
   });
   res.json({ ok: true });
 });

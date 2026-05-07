@@ -125,10 +125,65 @@ router.post('/clients/invite', async (req, res) => {
   const { email } = req.body;
   const client = await prisma.user.findUnique({ where: { email } });
   if (!client) return res.status(404).json({ error: 'Utilizator inexistent' });
-  await prisma.nutClient.upsert({
+  if (client.id === req.user.id) return res.status(400).json({ error: 'Nu te poti adauga pe tine' });
+
+  const link = await prisma.nutClient.upsert({
     where: { nutritionistId_clientId: { nutritionistId: req.user.id, clientId: client.id } },
-    create: { nutritionistId: req.user.id, clientId: client.id },
-    update: { status: 'PENDING' },
+    create: { nutritionistId: req.user.id, clientId: client.id, status: 'PENDING_CLIENT' },
+    update: { status: 'PENDING_CLIENT' },
+  });
+  global.__io?.to(`user:${client.id}`).emit('professional:invite', {
+    type: 'NUTRITIONIST',
+    linkId: link.id,
+    from: { id: req.user.id, name: req.user.name },
+  });
+  res.json({ ok: true, linkId: link.id });
+});
+
+// GET /api/nutritionist/requests - cereri primite de la clienti
+router.get('/requests', async (req, res) => {
+  const requests = await prisma.nutClient.findMany({
+    where: { nutritionistId: req.user.id, status: 'PENDING' },
+    include: {
+      client: { select: { id: true, name: true, email: true, avatar: true, avatarUrl: true, goal: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(requests.map((r) => ({
+    linkId: r.id,
+    client: r.client,
+    requestedAt: r.createdAt,
+  })));
+});
+
+// POST /api/nutritionist/requests/:linkId/accept
+router.post('/requests/:linkId/accept', async (req, res) => {
+  const link = await prisma.nutClient.findUnique({ where: { id: req.params.linkId } });
+  if (!link || link.nutritionistId !== req.user.id) {
+    return res.status(404).json({ error: 'Cerere inexistenta' });
+  }
+  const updated = await prisma.nutClient.update({
+    where: { id: link.id },
+    data: { status: 'ACCEPTED' },
+  });
+  global.__io?.to(`user:${link.clientId}`).emit('professional:request:accepted', {
+    type: 'NUTRITIONIST',
+    linkId: link.id,
+    nutritionist: { id: req.user.id, name: req.user.name },
+  });
+  res.json({ ok: true, status: updated.status });
+});
+
+// POST /api/nutritionist/requests/:linkId/reject
+router.post('/requests/:linkId/reject', async (req, res) => {
+  const link = await prisma.nutClient.findUnique({ where: { id: req.params.linkId } });
+  if (!link || link.nutritionistId !== req.user.id) {
+    return res.status(404).json({ error: 'Cerere inexistenta' });
+  }
+  await prisma.nutClient.delete({ where: { id: link.id } });
+  global.__io?.to(`user:${link.clientId}`).emit('professional:request:rejected', {
+    type: 'NUTRITIONIST',
+    linkId: link.id,
   });
   res.json({ ok: true });
 });

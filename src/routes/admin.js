@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import bcrypt from 'bcryptjs';
 import { authenticate, requireRole } from '../middleware/auth.js';
 import { getAppSettings, saveAppSettings } from '../utils/appSettings.js';
+import { invalidateSettingsCache } from '../middleware/appSettings.js';
 import prisma from '../lib/prisma.js';
 
 const router = Router();
@@ -165,6 +167,7 @@ router.get('/settings', async (req, res) => {
 
 router.put('/settings', async (req, res) => {
   const settings = await saveAppSettings(prisma, req.body, req.user.id);
+  invalidateSettingsCache(); // Force re-read on next request
   res.json({ ok: true, settings });
 });
 
@@ -202,6 +205,84 @@ router.get('/system', async (req, res) => {
     nodeVersion: process.version,
     platform: process.platform,
     pid: process.pid,
+  });
+});
+
+// === PASSWORD RESET — admin manual flow ===
+//
+// Cand un user apasa "Forgot password", auth.js creaza un AuditLog cu action='PASSWORD_RESET_REQUEST'.
+// Admin vede aceste cereri si poate genera o parola temporara pentru user.
+// Adminul transmite manual parola (prin DM, telefon, email extern).
+
+// GET /admin/password-resets — toate cererile (rezolvate sau nu)
+router.get('/password-resets', async (req, res) => {
+  const requests = await prisma.auditLog.findMany({
+    where: { action: 'PASSWORD_RESET_REQUEST' },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+    include: { user: { select: { id: true, name: true, email: true, role: true, blocked: true } } },
+  });
+
+  const resolutions = await prisma.auditLog.findMany({
+    where: { action: 'PASSWORD_RESET_DONE' },
+    select: { userId: true, createdAt: true },
+  });
+  const resolvedMap = new Map();
+  for (const row of resolutions) {
+    if (!row.userId) continue;
+    const existing = resolvedMap.get(row.userId);
+    if (!existing || row.createdAt > existing) resolvedMap.set(row.userId, row.createdAt);
+  }
+
+  res.json(requests.map((req) => {
+    const isResolved = req.userId && resolvedMap.has(req.userId) && resolvedMap.get(req.userId) > req.createdAt;
+    return {
+      id: req.id,
+      userId: req.userId,
+      user: req.user,
+      requestedAt: req.createdAt,
+      status: isResolved ? 'RESOLVED' : 'PENDING',
+    };
+  }));
+});
+
+// POST /admin/password-resets/:userId/generate
+// Genereaza o parola temporara, o seteaza la user, si o returneaza la admin.
+// Admin o copiaza si o trimite manual userului.
+router.post('/password-resets/:userId/generate', async (req, res) => {
+  const { userId } = req.params;
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: 'Utilizator inexistent' });
+
+  // Generare parola temporara — 8 caractere random + 2 cifre
+  const generateTempPassword = () => {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    let pwd = '';
+    for (let i = 0; i < 10; i++) pwd += chars[Math.floor(Math.random() * chars.length)];
+    return pwd;
+  };
+  const tempPassword = generateTempPassword();
+  const hashed = await bcrypt.hash(tempPassword, 12);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password: hashed },
+  });
+
+  await prisma.auditLog.create({
+    data: {
+      userId,
+      action: 'PASSWORD_RESET_DONE',
+      type: 'auth',
+      status: 'SUCCESS',
+      detail: JSON.stringify({ resolvedBy: req.user.id, email: user.email }),
+    },
+  });
+
+  res.json({
+    ok: true,
+    tempPassword,
+    user: { email: user.email, name: user.name },
   });
 });
 

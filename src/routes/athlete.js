@@ -333,6 +333,63 @@ router.patch('/exercises/:id/toggle', async (req, res) => {
   res.json(normalizeWorkoutExercise(updated));
 });
 
+// PATCH /exercises/:id - editare seturi/repetari/kg/timp pauza
+// Atletul poate modifica orice exercitiu din workout-ul lui de plan
+router.patch('/exercises/:id', async (req, res) => {
+  const exercise = await prisma.workoutExercise.findFirst({
+    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
+  });
+  if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
+
+  const { sets, reps, weight, restSec, name } = req.body || {};
+  const data = {};
+
+  if (sets !== undefined) {
+    const v = Math.max(1, Math.min(20, Number(sets) || 0));
+    if (v > 0) data.sets = v;
+  }
+  if (reps !== undefined) {
+    const v = Math.max(1, Math.min(100, Number(reps) || 0));
+    if (v > 0) data.reps = v;
+  }
+  if (weight !== undefined) {
+    const v = Math.max(0, Math.min(500, Number(weight) || 0));
+    data.weight = v || null; // permitem null pentru exercitii fara greutate
+  }
+  if (restSec !== undefined) {
+    const v = Math.max(0, Math.min(600, Number(restSec) || 0));
+    data.restSec = v;
+  }
+  if (name !== undefined && typeof name === 'string') {
+    const v = name.trim();
+    if (v.length >= 2 && v.length <= 100) data.name = v;
+  }
+
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ error: 'Nicio valoare validă pentru update' });
+  }
+
+  const updated = await prisma.workoutExercise.update({
+    where: { id: exercise.id },
+    data,
+  });
+
+  // Emit Socket.IO catre coach (daca atletul e atribuit la un coach) ca sa vada modificarile live
+  const coachLink = await prisma.coachClient.findFirst({
+    where: { athleteId: req.user.id, status: 'ACTIVE' },
+    select: { coachId: true },
+  });
+  if (coachLink?.coachId) {
+    global.__io?.to(`user:${coachLink.coachId}`).emit('athlete:exercise:updated', {
+      athleteId: req.user.id,
+      exercise: normalizeWorkoutExercise(updated),
+    });
+  }
+
+  res.json(normalizeWorkoutExercise(updated));
+});
+
+
 router.delete('/exercises/:id', async (req, res) => {
   await prisma.workoutExercise.deleteMany({ where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } } });
   res.json({ ok: true });

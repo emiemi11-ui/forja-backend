@@ -1,9 +1,37 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { requirePro } from '../middleware/planCheck.js';
 import prisma from '../lib/prisma.js';
 
 const router = Router();
 router.use(authenticate);
+
+// Restrictionari pentru initiere DM:
+// - USER (atlet): trebuie sa fie pe plan PRO sau TEAM
+// - COACH/NUTRITIONIST: pot initia oricand
+// - ADMIN: poate initia DM DOAR catre COACH sau NUTRITIONIST
+async function checkDmStartAllowed(req, res, next) {
+  // Atletii (USER) au nevoie de PRO+
+  if (req.user.role === 'USER') return requirePro(req, res, next);
+
+  // Admin -> verificam tinta
+  if (req.user.role === 'ADMIN') {
+    const targetId = req.body?.targetUserId;
+    if (!targetId) return res.status(400).json({ error: 'Utilizator țintă invalid' });
+    const target = await prisma.user.findUnique({ where: { id: targetId }, select: { role: true } });
+    if (!target) return res.status(404).json({ error: 'Utilizator inexistent' });
+    if (target.role !== 'COACH' && target.role !== 'NUTRITIONIST') {
+      return res.status(403).json({
+        error: 'admin_dm_restricted',
+        message: 'Adminul poate trimite mesaje doar către coach și nutriționist.',
+      });
+    }
+    return next();
+  }
+
+  // Coach + Nutritionist -> liber
+  return next();
+}
 
 function formatMessage(message, currentUserId) {
   return {
@@ -67,7 +95,7 @@ router.get('/conversations', async (req, res) => {
 });
 
 // POST /messages/start
-router.post('/start', async (req, res) => {
+router.post('/start', checkDmStartAllowed, async (req, res) => {
   const { targetUserId } = req.body;
   if (!targetUserId || targetUserId === req.user.id) {
     return res.status(400).json({ error: 'Utilizator țintă invalid' });

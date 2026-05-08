@@ -228,6 +228,15 @@ router.delete('/comments/:id', async (req, res) => {
   }
 
   await prisma.comment.delete({ where: { id: req.params.id } });
+
+  // Emit Socket.IO event pentru sincronizare în timp real
+  const payload = { postId: comment.postId, commentId: comment.id };
+  if (comment.post.teamId) {
+    global.__io?.to(`team:${comment.post.teamId}`).emit('feed:comment:deleted', payload);
+  } else {
+    global.__io?.emit('feed:comment:deleted', payload);
+  }
+
   res.json({ ok: true });
 });
 
@@ -239,7 +248,17 @@ router.delete('/:id', async (req, res) => {
   const allowed = await canManagePost(post, req.user);
   if (!allowed) return res.status(403).json({ error: 'Nu poți șterge această postare.' });
 
+  const teamId = post.teamId;
   await prisma.post.delete({ where: { id: req.params.id } });
+
+  // Emit Socket.IO event pentru sincronizare în timp real
+  const payload = { postId: post.id, teamId };
+  if (teamId) {
+    global.__io?.to(`team:${teamId}`).emit('feed:deleted', payload);
+  } else {
+    global.__io?.emit('feed:deleted', payload);
+  }
+
   res.json({ ok: true });
 });
 

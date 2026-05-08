@@ -116,6 +116,10 @@ app.get('/health', (req, res) => res.json({ status: 'ok', time: new Date().toISO
 const api = express.Router();
 app.use('/api', api);
 
+// Maintenance + signup checks (skips /auth, /admin, /health internally)
+import { maintenanceCheck, signupCheck, waitlistCheck, wishlistCheck } from './middleware/appSettings.js';
+api.use(maintenanceCheck);
+
 // Public + auth routes
 api.use('/auth', authRoutes);
 api.use('/', publicRoutes);

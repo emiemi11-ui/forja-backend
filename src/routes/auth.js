@@ -2,6 +2,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { signToken } from '../utils/jwt.js';
 import { getAppSettings } from '../utils/appSettings.js';
+import { signupCheck } from '../middleware/appSettings.js';
 import prisma from '../lib/prisma.js';
 
 const router = Router();
@@ -14,7 +15,7 @@ const ROLE_REDIRECTS = {
 };
 
 // POST /auth/register
-router.post('/register', async (req, res) => {
+router.post('/register', signupCheck, async (req, res) => {
   try {
     const { name, email, password, role, plan, extra } = req.body;
 
@@ -193,10 +194,35 @@ router.post('/login', async (req, res) => {
       },
     }).catch(() => {});
 
-    // Update streak
+    // Update streak — DOAR dacă userul nu a mai fost activ azi
+    let newStreak = user.streak || 0;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const last = user.lastActiveDate ? new Date(user.lastActiveDate) : null;
+    const lastDay = last ? new Date(last.getFullYear(), last.getMonth(), last.getDate()) : null;
+
+    if (!lastDay) {
+      // Prima activitate — încep streak la 1
+      newStreak = 1;
+    } else {
+      const diffDays = Math.round((today - lastDay) / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) {
+        // Azi am mai fost activ — nu schimb streak
+      } else if (diffDays === 1) {
+        // Activ ieri — continui streak
+        newStreak = (user.streak || 0) + 1;
+      } else {
+        // Pauză de 2+ zile — restart streak
+        newStreak = 1;
+      }
+    }
+
     await prisma.user.update({
       where: { id: user.id },
-      data: { streak: user.streak + 1 },
+      data: {
+        streak: newStreak,
+        lastActiveDate: now,
+      },
     });
 
     const token = signToken({ userId: user.id, role: user.role });
@@ -209,7 +235,7 @@ router.post('/login', async (req, res) => {
     res.json({
       ok: true,
       token,
-      user: { ...safeUser, streak: safeUser.streak + 1, isDemo: false },
+      user: { ...safeUser, streak: newStreak, isDemo: false },
       redirect: ROLE_REDIRECTS[user.role] || '/app',
     });
   } catch (err) {

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.js';
+import { requirePro } from '../middleware/planCheck.js';
 import { ensureUserGoals, getUserDailySummary, normalizeWorkoutExercise } from '../utils/userActivity.js';
 import { readLatestMeta, writeMeta } from '../utils/metaStore.js';
 import prisma from '../lib/prisma.js';
@@ -273,7 +274,8 @@ router.get('/professionals', async (req, res) => {
 
 // POST /api/user/professionals/request
 // Atletul cere unui profesionist sa fie coach sau nutritionist
-router.post('/professionals/request', async (req, res) => {
+// Necesita planul PRO sau TEAM
+router.post('/professionals/request', requirePro, async (req, res) => {
   const { professionalId } = req.body || {};
   if (!professionalId) return res.status(400).json({ error: 'professionalId lipseste' });
   if (professionalId === req.user.id) return res.status(400).json({ error: 'Nu te poti adauga pe tine' });

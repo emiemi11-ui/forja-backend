@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.js';
+import { requireTeam } from '../middleware/planCheck.js';
 import prisma from '../lib/prisma.js';
 
 const router = Router();
@@ -113,8 +114,8 @@ router.get('/', async (req, res) => {
   res.json(visibleTeams.map((team) => toListItem(team, req.user.id)));
 });
 
-// POST /teams — create
-router.post('/', async (req, res) => {
+// POST /teams — create. Necesita planul TEAM.
+router.post('/', requireTeam, async (req, res) => {
   const { name, description, category, isPublic } = req.body || {};
   const cleanName = String(name || '').trim();
   if (!cleanName) return res.status(400).json({ error: 'Numele echipei este obligatoriu.' });
@@ -247,8 +248,8 @@ router.get('/:id', async (req, res) => {
   });
 });
 
-// POST /teams/:id/join
-router.post('/:id/join', async (req, res) => {
+// POST /teams/:id/join — necesita planul TEAM (atletii FREE/PRO nu se pot alatura)
+router.post('/:id/join', requireTeam, async (req, res) => {
   const team = await prisma.team.findUnique({ where: { id: req.params.id } });
   if (!team) return res.status(404).json({ error: 'Echipă inexistentă' });
 

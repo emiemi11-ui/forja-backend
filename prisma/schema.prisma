@@ -56,6 +56,7 @@ model User {
   streak         Int      @default(0)
   isDemo         Boolean  @default(false)
   blocked        Boolean  @default(false)
+  lastActiveDate DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

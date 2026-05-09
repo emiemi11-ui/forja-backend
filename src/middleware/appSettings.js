@@ -39,7 +39,7 @@ export async function maintenanceCheck(req, res, next) {
 
   return res.status(503).json({
     error: 'maintenance',
-    message: 'Platforma este în mentenanță. Revenim curând!',
+    message: 'Platforma este în mentenanță. Asta înseamnă că de la login în colo nu se mai poate utiliza. Revenim curând!',
   });
 }
 

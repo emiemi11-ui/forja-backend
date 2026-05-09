@@ -79,7 +79,7 @@ function formatSleepResponse(entries) {
 
 async function getPlannedWorkout(userId) {
   return prisma.workout.findFirst({
-    where: { userId, status: { startsWith: 'PLAN:' } },
+    where: { userId, status: { startsWith: 'PLAN' } },
     include: { exercises: { orderBy: { order: 'asc' } } },
     orderBy: { updatedAt: 'desc' },
   });
@@ -336,7 +336,7 @@ router.patch('/exercises/bulk-done', async (req, res) => {
 
 router.patch('/exercises/:id/toggle', async (req, res) => {
   const exercise = await prisma.workoutExercise.findFirst({
-    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
+    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } },
   });
   if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
   const updated = await prisma.workoutExercise.update({
@@ -350,7 +350,7 @@ router.patch('/exercises/:id/toggle', async (req, res) => {
 // Atletul poate modifica orice exercitiu din workout-ul lui de plan
 router.patch('/exercises/:id', async (req, res) => {
   const exercise = await prisma.workoutExercise.findFirst({
-    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
+    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } },
   });
   if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
 
@@ -404,7 +404,7 @@ router.patch('/exercises/:id', async (req, res) => {
 
 
 router.delete('/exercises/:id', async (req, res) => {
-  await prisma.workoutExercise.deleteMany({ where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } } });
+  await prisma.workoutExercise.deleteMany({ where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } } });
   res.json({ ok: true });
 });
 

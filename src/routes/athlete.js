@@ -175,7 +175,15 @@ router.get('/today', async (req, res) => {
 });
 
 router.post('/today/water', async (req, res) => {
-  const cups = Math.max(0, Number(req.body?.cups || 0));
+  // Read user's water goal (in liters) to compute max cups (4 cups per liter)
+  const userGoals = await prisma.userGoals.findUnique({ where: { userId: req.user.id } });
+  const targetLiters = Number(userGoals?.water || 3);
+  const maxCups = Math.max(4, Math.round(targetLiters * 4));
+
+  // Clamp incoming cups between 0 and maxCups
+  const requested = Math.max(0, Number(req.body?.cups || 0));
+  const cups = Math.min(requested, maxCups);
+
   const { start, end } = getDayWindow();
   await prisma.nutritionLog.deleteMany({
     where: { userId: req.user.id, date: { gte: start, lt: end }, mealType: 'WATER' },
@@ -194,7 +202,12 @@ router.post('/today/water', async (req, res) => {
       },
     });
   }
-  res.json({ water_cups: cups, water_liters: Number((cups / 4).toFixed(1)) });
+  res.json({
+    water_cups: cups,
+    water_liters: Number((cups / 4).toFixed(1)),
+    water_target_cups: maxCups,
+    water_target_liters: targetLiters,
+  });
 });
 
 router.post('/today/steps', async (req, res) => {

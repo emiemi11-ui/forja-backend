@@ -261,4 +261,48 @@ router.get('/me', async (req, res) => {
   }
 });
 
+// POST /auth/change-password — schimbă parola pentru userul curent
+router.post('/change-password', async (req, res) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Neautentificat' });
+
+  try {
+    const { verifyToken } = await import('../utils/jwt.js');
+    const decoded = verifyToken(header.slice(7));
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) return res.status(404).json({ error: 'Utilizator inexistent' });
+
+    const { currentPassword, newPassword } = req.body || {};
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Introdu parola actuală și parola nouă' });
+    }
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({ error: 'Parola nouă trebuie să aibă minim 6 caractere' });
+    }
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'Noua parolă trebuie să fie diferită' });
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.password);
+    if (!ok) return res.status(401).json({ error: 'Parola actuală este greșită' });
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await prisma.user.update({ where: { id: user.id }, data: { password: hashed } });
+
+    await prisma.auditLog.create({
+      data: {
+        userId: user.id,
+        action: 'PASSWORD_CHANGED',
+        type: 'auth',
+        status: 'SUCCESS',
+        detail: JSON.stringify({ email: user.email }),
+      },
+    });
+
+    res.json({ ok: true });
+  } catch {
+    res.status(401).json({ error: 'Token invalid' });
+  }
+});
+
 export default router;

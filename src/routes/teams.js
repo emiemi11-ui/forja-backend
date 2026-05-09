@@ -70,12 +70,10 @@ router.get('/', async (req, res) => {
     where.members = { some: { userId: req.user.id } };
   } else if (filter === 'public') {
     where.isPublic = true;
-  } else if (req.user.role !== 'ADMIN') {
-    where.OR = [
-      { isPublic: true },
-      { members: { some: { userId: req.user.id } } },
-    ];
   }
+  // Pentru filter='all' sau implicit, NU mai filtrăm pe isPublic — afișăm și echipele
+  // private așa cum cere user-ul (pot fi descoperite și pot trimite cerere de intrare).
+  // Postările echipelor private rămân invizibile pentru ne-membri (vezi GET /:id).
 
   if (q) {
     const searchWhere = [
@@ -192,18 +190,21 @@ router.get('/:id', async (req, res) => {
 
   const myMember = team.members.find((member) => member.userId === req.user.id);
   const owner = team.members.find((member) => member.role === 'OWNER');
+  const myPendingRequest = team.joinRequests.find((request) => request.userId === req.user.id);
 
   if (!req.user.isDemo && req.user.role !== 'ADMIN' && owner?.user?.isDemo && !myMember) {
     return res.status(404).json({ error: 'Echipă inexistentă' });
   }
 
+  const { joinRequests: _joinRequests, ...teamPublic } = team;
   res.json({
-    ...team,
+    ...teamPublic,
     coach: owner?.user?.name || '',
     membersCount: team._count.members,
     postsCount: team._count.posts,
     isMember: Boolean(myMember),
     myRole: myMember?.role || null,
+    myPendingRequestId: myPendingRequest?.id || null,
     members: team.members.map((member) => ({
       id: member.user.id,
       name: member.user.name,

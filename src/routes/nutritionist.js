@@ -80,13 +80,32 @@ router.get('/overview', async (req, res) => {
 });
 
 router.get('/clients', async (req, res) => {
+  // Doar clienții ACCEPTED apar în lista activă. PENDING_CLIENT (nut a invitat) și PENDING (clientul a cerut)
+  // sunt separați la /pending-invitations și /requests.
   const clients = await prisma.nutClient.findMany({
-    where: { nutritionistId: req.user.id },
+    where: { nutritionistId: req.user.id, status: 'ACCEPTED' },
     include: { client: true, template: true },
     orderBy: { createdAt: 'desc' },
   });
   const payload = await Promise.all(clients.map(buildClientCard));
   res.json(payload);
+});
+
+// GET /api/nutritionist/pending-invitations
+// Invitații trimise de nut la clienți care încă nu au răspuns
+router.get('/pending-invitations', async (req, res) => {
+  const links = await prisma.nutClient.findMany({
+    where: { nutritionistId: req.user.id, status: 'PENDING_CLIENT' },
+    include: {
+      client: { select: { id: true, name: true, email: true, avatar: true, avatarUrl: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(links.map((link) => ({
+    linkId: link.id,
+    client: link.client,
+    sentAt: link.createdAt,
+  })));
 });
 
 router.get('/clients/:id', async (req, res) => {
@@ -243,17 +262,84 @@ router.post('/templates', async (req, res) => {
   });
 });
 
+router.put('/templates/:id', async (req, res) => {
+  const template = await prisma.nutTemplate.findFirst({ where: { id: req.params.id, authorId: req.user.id } });
+  if (!template) return res.status(404).json({ error: 'Template inexistent' });
+
+  const name = String(req.body.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Numele template-ului este obligatoriu' });
+  const kcal = Number(req.body.kcal || 0);
+  const protein = Number(req.body.protein || req.body.p || 0);
+  const carbs = Number(req.body.carbs || req.body.c || 0);
+  const fat = Number(req.body.fat || req.body.f || 0);
+
+  const updated = await prisma.nutTemplate.update({
+    where: { id: template.id },
+    data: { name, kcal, protein, carbs, fat },
+  });
+
+  await writeMeta(prisma, {
+    userId: req.user.id,
+    action: `NUT_TEMPLATE_META:${updated.id}`,
+    type: 'nutrition-template',
+    status: 'ACTION',
+    detail: { mealPlan: Array.isArray(req.body.mealPlan) ? req.body.mealPlan : [], description: req.body.description || '' },
+  });
+
+  res.json({
+    id: updated.id,
+    name: updated.name,
+    kcal: updated.kcal,
+    p: updated.protein,
+    c: updated.carbs,
+    f: updated.fat,
+    mealPlan: Array.isArray(req.body.mealPlan) ? req.body.mealPlan : [],
+  });
+});
+
+router.delete('/templates/:id', async (req, res) => {
+  const template = await prisma.nutTemplate.findFirst({ where: { id: req.params.id, authorId: req.user.id } });
+  if (!template) return res.status(404).json({ error: 'Template inexistent' });
+
+  // Detach from any clients first (FK constraint protection)
+  await prisma.nutClient.updateMany({
+    where: { templateId: template.id },
+    data: { templateId: null },
+  });
+
+  await prisma.nutTemplate.delete({ where: { id: template.id } });
+  res.json({ ok: true });
+});
+
 router.post('/templates/:id/apply', async (req, res) => {
   const template = await prisma.nutTemplate.findFirst({ where: { id: req.params.id, authorId: req.user.id } });
   if (!template) return res.status(404).json({ error: 'Template inexistent' });
   const clientIds = Array.isArray(req.body.clientIds) ? req.body.clientIds : [];
   if (!clientIds.length) return res.status(400).json({ error: 'Selectează clienți' });
-  await Promise.all(clientIds.map((clientId) => prisma.nutClient.upsert({
+
+  // Aplicăm template-ul DOAR pe clienții care au deja statusul ACCEPTED.
+  // Dacă un clientId nu există încă ca link sau e PENDING, sărim peste — nutriționistul
+  // trebuie să trimită întâi invitație, iar clientul s-o accepte.
+  const existing = await prisma.nutClient.findMany({
+    where: {
+      nutritionistId: req.user.id,
+      clientId: { in: clientIds },
+      status: 'ACCEPTED',
+    },
+  });
+  const acceptedIds = existing.map((row) => row.clientId);
+  await Promise.all(acceptedIds.map((clientId) => prisma.nutClient.update({
     where: { nutritionistId_clientId: { nutritionistId: req.user.id, clientId } },
-    create: { nutritionistId: req.user.id, clientId, status: 'ACCEPTED', templateId: template.id },
-    update: { status: 'ACCEPTED', templateId: template.id },
+    data: { templateId: template.id },
   })));
-  res.json({ ok: true });
+
+  const skipped = clientIds.length - acceptedIds.length;
+  res.json({
+    ok: true,
+    applied: acceptedIds.length,
+    skipped,
+    skippedReason: skipped > 0 ? 'Unii clienți încă nu au acceptat invitația.' : null,
+  });
 });
 
 export default router;

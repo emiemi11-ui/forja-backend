@@ -138,7 +138,10 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
     return acc;
   }, { kcal: 0, p: 0, c: 0, f: 0, fib: 0 });
 
-  const waterCups = Math.round(waterRows.reduce((sum, row) => sum + Number(row.quantity || 1), 0));
+  const rawWaterCups = Math.round(waterRows.reduce((sum, row) => sum + Number(row.quantity || 1), 0));
+  const waterTargetCupsCalc = Math.max(4, Math.round((Number(goals?.water || 3)) * 4));
+  // Clamp at read time to prevent legacy/corrupted data from showing >100% values
+  const waterCups = Math.min(rawWaterCups, waterTargetCupsCalc);
   const sleepHours = Number(latestSleep?.hours || 0);
   const sleepScore = Number(latestSleep?.score || 0);
   const steps = Math.max(0, Number(stepsMeta?.steps || 0));
@@ -157,7 +160,7 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
     macros,
     waterCups,
     waterLiters: Number((waterCups / 4).toFixed(1)),
-    waterTargetCups: Math.max(4, Math.round((Number(goals?.water || 3)) * 4)),
+    waterTargetCups: waterTargetCupsCalc,
     sleepHours,
     sleepScore,
     steps,

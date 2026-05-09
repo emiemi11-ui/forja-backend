@@ -126,13 +126,34 @@ router.get('/team', async (req, res) => {
 });
 
 router.get('/athletes', async (req, res) => {
+  // Doar atleții ACCEPTED apar în lista activă. Cei PENDING_ATHLETE (coach a invitat,
+  // așteaptă răspuns) sau PENDING (atletul a cerut, așteaptă răspuns coach) sunt
+  // separați la /pending-invitations și /requests.
   const clients = await prisma.coachClient.findMany({
-    where: { coachId: req.user.id },
+    where: { coachId: req.user.id, status: 'ACCEPTED' },
     include: { athlete: true },
     orderBy: { createdAt: 'desc' },
   });
   const payload = await Promise.all(clients.map(buildAthleteCard));
   res.json(payload);
+});
+
+// GET /api/coach/pending-invitations
+// Invitații trimise de coach la atleți care încă nu au răspuns
+router.get('/pending-invitations', async (req, res) => {
+  const links = await prisma.coachClient.findMany({
+    where: { coachId: req.user.id, status: 'PENDING_ATHLETE' },
+    include: {
+      athlete: { select: { id: true, name: true, email: true, avatar: true, avatarUrl: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+  res.json(links.map((link) => ({
+    linkId: link.id,
+    athlete: link.athlete,
+    notes: link.notes,
+    sentAt: link.createdAt,
+  })));
 });
 
 router.get('/athletes/:id', async (req, res) => {

@@ -346,4 +346,84 @@ router.delete('/professionals/:type/:linkId', async (req, res) => {
   return res.status(400).json({ error: 'Tip necunoscut (asteptat COACH sau NUTRITIONIST)' });
 });
 
+// POST /api/user/professionals/:type/:linkId/accept
+// Atletul accepta invitatia primita de la un coach/nutritionist
+router.post('/professionals/:type/:linkId/accept', async (req, res) => {
+  const { type, linkId } = req.params;
+
+  if (type === 'COACH') {
+    const link = await prisma.coachClient.findUnique({ where: { id: linkId } });
+    if (!link || link.athleteId !== req.user.id) {
+      return res.status(404).json({ error: 'Invitatie inexistenta' });
+    }
+    if (link.status !== 'PENDING_ATHLETE') {
+      return res.status(400).json({ error: 'Invitatia nu mai este in asteptare' });
+    }
+    const updated = await prisma.coachClient.update({
+      where: { id: linkId },
+      data: { status: 'ACCEPTED' },
+    });
+    global.__io?.to(`user:${link.coachId}`).emit('professional:invite:accepted', {
+      linkId,
+      athlete: { id: req.user.id, name: req.user.name },
+    });
+    return res.json({ ok: true, status: updated.status });
+  }
+
+  if (type === 'NUTRITIONIST') {
+    const link = await prisma.nutClient.findUnique({ where: { id: linkId } });
+    if (!link || link.clientId !== req.user.id) {
+      return res.status(404).json({ error: 'Invitatie inexistenta' });
+    }
+    if (link.status !== 'PENDING_CLIENT') {
+      return res.status(400).json({ error: 'Invitatia nu mai este in asteptare' });
+    }
+    const updated = await prisma.nutClient.update({
+      where: { id: linkId },
+      data: { status: 'ACCEPTED' },
+    });
+    global.__io?.to(`user:${link.nutritionistId}`).emit('professional:invite:accepted', {
+      linkId,
+      client: { id: req.user.id, name: req.user.name },
+    });
+    return res.json({ ok: true, status: updated.status });
+  }
+
+  return res.status(400).json({ error: 'Tip necunoscut (asteptat COACH sau NUTRITIONIST)' });
+});
+
+// POST /api/user/professionals/:type/:linkId/reject
+// Atletul refuza invitatia (sterge link-ul)
+router.post('/professionals/:type/:linkId/reject', async (req, res) => {
+  const { type, linkId } = req.params;
+
+  if (type === 'COACH') {
+    const link = await prisma.coachClient.findUnique({ where: { id: linkId } });
+    if (!link || link.athleteId !== req.user.id) {
+      return res.status(404).json({ error: 'Invitatie inexistenta' });
+    }
+    await prisma.coachClient.delete({ where: { id: linkId } });
+    global.__io?.to(`user:${link.coachId}`).emit('professional:invite:rejected', {
+      linkId,
+      by: req.user.id,
+    });
+    return res.json({ ok: true });
+  }
+
+  if (type === 'NUTRITIONIST') {
+    const link = await prisma.nutClient.findUnique({ where: { id: linkId } });
+    if (!link || link.clientId !== req.user.id) {
+      return res.status(404).json({ error: 'Invitatie inexistenta' });
+    }
+    await prisma.nutClient.delete({ where: { id: linkId } });
+    global.__io?.to(`user:${link.nutritionistId}`).emit('professional:invite:rejected', {
+      linkId,
+      by: req.user.id,
+    });
+    return res.json({ ok: true });
+  }
+
+  return res.status(400).json({ error: 'Tip necunoscut (asteptat COACH sau NUTRITIONIST)' });
+});
+
 export default router;

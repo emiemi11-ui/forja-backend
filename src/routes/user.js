@@ -149,7 +149,7 @@ router.get('/dashboard', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     }),
     prisma.workout.findFirst({
-      where: { userId: req.user.id, status: { startsWith: 'PLAN:' } },
+      where: { userId: req.user.id, status: { startsWith: 'PLAN' } },
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     }),

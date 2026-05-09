@@ -44,7 +44,7 @@ async function buildAthleteCard(link) {
   const since = startOfDay();
   const [goals, planWorkout, meals, hydration] = await Promise.all([
     prisma.userGoals.findUnique({ where: { userId: athlete.id } }),
-    prisma.workout.findFirst({ where: { userId: athlete.id, status: { startsWith: 'PLAN:' } }, include: { exercises: true }, orderBy: { updatedAt: 'desc' } }),
+    prisma.workout.findFirst({ where: { userId: athlete.id, status: { startsWith: 'PLAN' } }, include: { exercises: true }, orderBy: { updatedAt: 'desc' } }),
     prisma.nutritionLog.findMany({ where: { userId: athlete.id, date: { gte: since } } }),
     getHydration(athlete.id),
   ]);
@@ -167,7 +167,7 @@ router.get('/athletes/:id', async (req, res) => {
   const since = startOfDay();
   const [goals, planWorkout, meals, recentCompleted, hydration] = await Promise.all([
     prisma.userGoals.findUnique({ where: { userId: link.athlete.id } }),
-    prisma.workout.findFirst({ where: { userId: link.athlete.id, status: { startsWith: 'PLAN:' } }, include: { exercises: { orderBy: { order: 'asc' } } } }),
+    prisma.workout.findFirst({ where: { userId: link.athlete.id, status: { startsWith: 'PLAN' } }, include: { exercises: { orderBy: { order: 'asc' } } } }),
     prisma.nutritionLog.findMany({ where: { userId: link.athlete.id, date: { gte: since } }, orderBy: { date: 'asc' } }),
     prisma.workout.findMany({ where: { userId: link.athlete.id, status: { startsWith: 'COMPLETED' } }, orderBy: { createdAt: 'desc' }, take: 7, include: { exercises: true } }),
     getHydration(link.athlete.id),
@@ -424,7 +424,7 @@ router.post('/workouts/:id/assign', async (req, res) => {
       create: { coachId: req.user.id, athleteId, status: 'ACCEPTED' },
       update: { status: 'ACCEPTED' },
     });
-    let planWorkout = await prisma.workout.findFirst({ where: { userId: athleteId, status: { startsWith: 'PLAN:' } } });
+    let planWorkout = await prisma.workout.findFirst({ where: { userId: athleteId, status: { startsWith: 'PLAN' } } });
     if (!planWorkout) {
       planWorkout = await prisma.workout.create({ data: { userId: athleteId, name: template.name, status: `PLAN:${template.id}` } });
     } else {
@@ -441,6 +441,12 @@ router.post('/workouts/:id/assign', async (req, res) => {
         done: false,
         order: index,
       })),
+    });
+    // Notifica atletul ca a primit un plan nou
+    global.__io?.to(`user:${athleteId}`).emit('coach:plan:assigned', {
+      coachId: req.user.id,
+      coachName: req.user.name,
+      planName: template.name,
     });
     return link;
   }));

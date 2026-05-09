@@ -100,7 +100,7 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
     prisma.sleepEntry.findFirst({ where: { userId }, orderBy: { date: 'desc' } }),
     readLatestMeta(prisma, { userId, action: 'today_steps', since: start }),
     prisma.workout.findFirst({
-      where: { userId, status: { startsWith: 'PLAN:' } },
+      where: { userId, status: { startsWith: 'PLAN' } },
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     }),

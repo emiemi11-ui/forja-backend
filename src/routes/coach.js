@@ -360,6 +360,55 @@ router.post('/workouts', async (req, res) => {
   res.status(201).json({ ok: true, id: workout.id });
 });
 
+// PUT /workouts/:id — Editeaza un plan de antrenament al coach-ului
+router.put('/workouts/:id', async (req, res) => {
+  const workout = await prisma.workout.findFirst({
+    where: { id: req.params.id, userId: req.user.id, status: { startsWith: 'TEMPLATE:' } },
+  });
+  if (!workout) return res.status(404).json({ error: 'Plan inexistent' });
+
+  const name = String(req.body.name || '').trim();
+  const category = String(req.body.category || 'General').trim();
+  const exercises = Array.isArray(req.body.exercises) ? req.body.exercises : [];
+  if (!name) return res.status(400).json({ error: 'Numele planului este obligatoriu' });
+  if (!exercises.length) return res.status(400).json({ error: 'Adaugă cel puțin un exercițiu' });
+
+  // Sterge toate exercitiile vechi si recreaza
+  await prisma.workoutExercise.deleteMany({ where: { workoutId: workout.id } });
+  await prisma.workout.update({
+    where: { id: workout.id },
+    data: {
+      name,
+      status: `TEMPLATE:${category}`,
+      exercises: {
+        create: exercises.map((exercise, index) => {
+          const lib = matchLibrary(exercise.name) || EXERCISE_LIBRARY.find((item) => String(item.id) === String(exercise.libId));
+          const parsed = lib ? parseSets(lib.sets) : { sets: Number(exercise.sets || 4), reps: Number(exercise.reps || 8) };
+          return {
+            name: lib?.name || exercise.name,
+            sets: Number(exercise.sets || parsed.sets || 4),
+            reps: Number(exercise.reps || parsed.reps || 8),
+            restSec: Number(exercise.rest || 90),
+            order: index,
+          };
+        }),
+      },
+    },
+  });
+  res.json({ ok: true });
+});
+
+// DELETE /workouts/:id — Sterge un plan de antrenament al coach-ului
+router.delete('/workouts/:id', async (req, res) => {
+  const workout = await prisma.workout.findFirst({
+    where: { id: req.params.id, userId: req.user.id, status: { startsWith: 'TEMPLATE:' } },
+  });
+  if (!workout) return res.status(404).json({ error: 'Plan inexistent' });
+  await prisma.workoutExercise.deleteMany({ where: { workoutId: workout.id } });
+  await prisma.workout.delete({ where: { id: workout.id } });
+  res.json({ ok: true });
+});
+
 router.post('/workouts/:id/assign', async (req, res) => {
   const template = await prisma.workout.findFirst({
     where: { id: req.params.id, userId: req.user.id, status: { startsWith: 'TEMPLATE:' } },

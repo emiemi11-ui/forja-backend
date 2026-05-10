@@ -175,4 +175,26 @@ router.post('/:id', async (req, res) => {
   res.status(201).json(payload);
 });
 
+// POST /messages/:id/mark-read — marcheaza ca read si emite messages:seen
+// Folosit cand un user are conversatia deschisa si primeste un mesaj nou via socket
+router.post('/:id/mark-read', async (req, res) => {
+  const convo = await prisma.conversation.findUnique({ where: { id: req.params.id } });
+  if (!convo) return res.status(404).json({ error: 'Conversație inexistentă' });
+  if (![convo.user1Id, convo.user2Id].includes(req.user.id)) {
+    return res.status(403).json({ error: 'Acces interzis' });
+  }
+  const otherId = convo.user1Id === req.user.id ? convo.user2Id : convo.user1Id;
+  const result = await prisma.message.updateMany({
+    where: { conversationId: convo.id, senderId: { not: req.user.id }, read: false },
+    data: { read: true },
+  });
+  if (result.count > 0) {
+    global.__io?.to(`user:${otherId}`).emit('messages:seen', {
+      conversationId: convo.id,
+      seenBy: req.user.id,
+    });
+  }
+  res.json({ ok: true, markedRead: result.count });
+});
+
 export default router;

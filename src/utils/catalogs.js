@@ -18,7 +18,7 @@ export const EXERCISE_LIBRARY = [
 ];
 
 export const FOOD_DB = [
-  { id: 'f1',  name: 'Piept de pui (100g)',  kcal: 165, p: 31,  c: 0,  f: 3.6, fib: 0,   img: 'https://images.unsplash.com/photo-1604503468506-a8da13d82571?w=100&q=80' },
+  { id: 'f1',  name: 'Piept de pui (100g)',  kcal: 165, p: 31,  c: 0,  f: 3.6, fib: 0,   img: '/img/ext/chicken.jpg' },
   { id: 'f2',  name: 'Orez alb (100g)',      kcal: 130, p: 2.7, c: 28, f: 0.3, fib: 0.4, img: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?w=100&q=80' },
   { id: 'f3',  name: 'Ou (1 buc)',           kcal: 72,  p: 6.3, c: 0.4,f: 5,   fib: 0,   img: 'https://images.unsplash.com/photo-1482049016688-2d3e1b311543?w=100&q=80' },
   { id: 'f4',  name: 'Banană (1 medie)',     kcal: 105, p: 1.3, c: 27, f: 0.4, fib: 3.1, img: 'https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=100&q=80' },

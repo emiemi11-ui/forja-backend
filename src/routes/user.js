@@ -146,7 +146,7 @@ router.put('/goals', async (req, res) => {
 
 // GET /dashboard — overview data shaped for current frontend
 router.get('/dashboard', async (req, res) => {
-  const [safeUser, summary, coachLink, nutritionLink, planWorkout] = await Promise.all([
+  const [safeUser, summary, coachLink, nutritionLink, coachPlanWorkout, selfPlanWorkout] = await Promise.all([
     getSafeUser(req.user.id),
     getUserDailySummary(prisma, req.user.id),
     prisma.coachClient.findFirst({
@@ -167,6 +167,11 @@ router.get('/dashboard', async (req, res) => {
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     }),
+    prisma.workout.findFirst({
+      where: { userId: req.user.id, status: { startsWith: 'PLAN:' } },
+      include: { exercises: { orderBy: { order: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    }),
   ]);
 
   if (!safeUser) return res.status(404).json({ error: 'Utilizator inexistent' });
@@ -178,16 +183,29 @@ router.get('/dashboard', async (req, res) => {
       })
     : null;
 
-  const assignedWorkoutPlan = planWorkout ? {
-    id: planWorkout.id,
-    name: planWorkout.name,
-    coachName: coachLink?.coach?.name || '',
-    category: 'Asignat de coach',
-    exercises: planWorkout.exercises.length,
-    assignedAt: (coachLink?.createdAt || planWorkout.updatedAt || planWorkout.createdAt)?.toISOString?.() || null,
+  // Pentru MyPlansPage: pastram backward-compat (assignedWorkoutPlan = coach plan, daca exista),
+  // dar adaugam si lista plans care contine si planul propriu, daca exista.
+  const planWorkout = coachPlanWorkout || selfPlanWorkout;
+
+  const buildPlanSummary = (workout, isCoachPlan) => workout ? {
+    id: workout.id,
+    name: workout.name,
+    coachName: isCoachPlan ? (coachLink?.coach?.name || '') : '',
+    category: isCoachPlan ? 'Asignat de coach' : 'Plan personal',
+    exercises: workout.exercises.length,
+    assignedAt: (workout.updatedAt || workout.createdAt)?.toISOString?.() || null,
     status: 'active',
-    items: planWorkout.exercises.map(normalizeWorkoutExercise),
+    items: workout.exercises.map(normalizeWorkoutExercise),
+    isCoachPlan,
   } : null;
+
+  const assignedWorkoutPlan = buildPlanSummary(planWorkout, Boolean(coachPlanWorkout));
+
+  // Lista cu toate planurile user-ului (coach + propriu) — pentru MyPlansPage
+  const workoutPlans = [
+    buildPlanSummary(coachPlanWorkout, true),
+    buildPlanSummary(selfPlanWorkout, false),
+  ].filter(Boolean);
 
   const assignedNutritionPlan = nutritionLink?.template ? {
     id: nutritionLink.template.id,
@@ -236,6 +254,7 @@ router.get('/dashboard', async (req, res) => {
     },
     exercises: summary.exercises,
     assignedWorkoutPlan,
+    workoutPlans,
     assignedNutritionPlan,
   });
 });

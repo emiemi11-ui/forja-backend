@@ -90,10 +90,24 @@ io.use(async (socket, next) => {
   }
 });
 
+// Set of currently connected user IDs (for online presence)
+global.__onlineUsers = global.__onlineUsers || new Set();
+// Map userId -> count of socket connections (a user may have multiple tabs open)
+global.__onlineConnections = global.__onlineConnections || new Map();
+
 io.on('connection', async (socket) => {
   const user = socket.user;
   if (!user) return;
   socket.join(`user:${user.id}`);
+
+  // Track online presence
+  const prevCount = global.__onlineConnections.get(user.id) || 0;
+  global.__onlineConnections.set(user.id, prevCount + 1);
+  if (prevCount === 0) {
+    global.__onlineUsers.add(user.id);
+    // Inform everyone (the user was offline -> now online)
+    io.emit('presence:online', { userId: user.id });
+  }
 
   try {
     const memberships = await prisma.teamMember.findMany({ where: { userId: user.id }, select: { teamId: true } });
@@ -102,7 +116,16 @@ io.on('connection', async (socket) => {
     console.error('[socket] join rooms error', error);
   }
 
-  socket.on('disconnect', () => {});
+  socket.on('disconnect', () => {
+    const cur = global.__onlineConnections.get(user.id) || 1;
+    if (cur <= 1) {
+      global.__onlineConnections.delete(user.id);
+      global.__onlineUsers.delete(user.id);
+      io.emit('presence:offline', { userId: user.id });
+    } else {
+      global.__onlineConnections.set(user.id, cur - 1);
+    }
+  });
 });
 
 // Middleware

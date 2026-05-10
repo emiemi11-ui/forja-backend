@@ -38,7 +38,9 @@ function formatMessage(message, currentUserId) {
     id: message.id,
     message: message.content,
     isMe: message.senderId === currentUserId,
+    createdAt: message.createdAt,
     time: new Date(message.createdAt).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }),
+    seen: Boolean(message.read),
   };
 }
 
@@ -83,7 +85,7 @@ router.get('/conversations', async (req, res) => {
         role: other.role,
         avatar: other.avatar,
         avatarUrl: other.avatarUrl,
-        isOnline: true,
+        isOnline: global.__onlineUsers?.has(other.id) || false,
       },
       lastMessage: convo.messages[0]?.content || '',
       lastAt: convo.messages[0]?.createdAt || convo.updatedAt,
@@ -121,14 +123,24 @@ router.get('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Acces interzis' });
   }
   const other = convo.user1Id === req.user.id ? convo.user2 : convo.user1;
-  await prisma.message.updateMany({
+  // Marcheaza ca read TOATE mesajele primite de la celalalt user
+  const updateResult = await prisma.message.updateMany({
     where: { conversationId: convo.id, senderId: { not: req.user.id }, read: false },
     data: { read: true },
   });
+  // Notifica sender-ul ca mesajele lui au fost vazute
+  if (updateResult.count > 0) {
+    global.__io?.to(`user:${other.id}`).emit('messages:seen', {
+      conversationId: convo.id,
+      seenBy: req.user.id,
+    });
+  }
+  // Status online real
+  const isOnline = global.__onlineUsers?.has(other.id) || false;
   res.json({
     conversation: {
       id: convo.id,
-      other: { ...other, isOnline: true },
+      other: { ...other, isOnline },
     },
     messages: convo.messages.map((message) => formatMessage(message, req.user.id)),
   });

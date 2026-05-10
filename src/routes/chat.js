@@ -23,6 +23,7 @@ function toChatMessage(message, currentUserId) {
     avatar: message.sender?.avatarUrl || message.sender?.avatar || message.avatar || '',
     msg: message.content || message.text || message.msg || '',
     text: message.content || message.text || message.msg || '',
+    createdAt: message.createdAt || new Date().toISOString(),
     time: new Date(message.createdAt || Date.now()).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }),
     senderId: message.senderId,
     isMe: message.senderId === currentUserId,

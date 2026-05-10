@@ -66,6 +66,20 @@ router.patch('/', async (req, res) => {
   for (const key of allowed) {
     if (req.body[key] !== undefined) data[key] = req.body[key];
   }
+
+  // Email este special - verificam unicitate
+  if (req.body.email !== undefined) {
+    const newEmail = String(req.body.email || '').trim().toLowerCase();
+    if (!newEmail || !newEmail.includes('@') || newEmail.length < 5) {
+      return res.status(400).json({ error: 'Email invalid.' });
+    }
+    if (newEmail !== (req.user.email || '').toLowerCase()) {
+      const existing = await prisma.user.findFirst({ where: { email: newEmail, NOT: { id: req.user.id } } });
+      if (existing) return res.status(409).json({ error: 'Email-ul este deja folosit de alt cont.' });
+      data.email = newEmail;
+    }
+  }
+
   if (data.name) data.avatar = String(data.name).trim().charAt(0).toUpperCase() || 'U';
   await prisma.user.update({ where: { id: req.user.id }, data });
   const safeUser = await getSafeUser(req.user.id);
@@ -149,7 +163,7 @@ router.get('/dashboard', async (req, res) => {
       orderBy: { createdAt: 'desc' },
     }),
     prisma.workout.findFirst({
-      where: { userId: req.user.id, status: { startsWith: 'PLAN' } },
+      where: { userId: req.user.id, status: { startsWith: 'COACH:' } },
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     }),
@@ -168,7 +182,7 @@ router.get('/dashboard', async (req, res) => {
     id: planWorkout.id,
     name: planWorkout.name,
     coachName: coachLink?.coach?.name || '',
-    category: coachLink ? 'Asignat de coach' : 'Plan personal',
+    category: 'Asignat de coach',
     exercises: planWorkout.exercises.length,
     assignedAt: (coachLink?.createdAt || planWorkout.updatedAt || planWorkout.createdAt)?.toISOString?.() || null,
     status: 'active',

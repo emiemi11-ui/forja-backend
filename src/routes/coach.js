@@ -424,16 +424,17 @@ router.post('/workouts/:id/assign', async (req, res) => {
       create: { coachId: req.user.id, athleteId, status: 'ACCEPTED' },
       update: { status: 'ACCEPTED' },
     });
-    let planWorkout = await prisma.workout.findFirst({ where: { userId: athleteId, status: { startsWith: 'PLAN' } } });
-    if (!planWorkout) {
-      planWorkout = await prisma.workout.create({ data: { userId: athleteId, name: template.name, status: `PLAN:${template.id}` } });
+    // Cautam DOAR workout-uri cu status COACH:* — NU atingem planul propriu al atletului (PLAN:SELF)
+    let coachPlanWorkout = await prisma.workout.findFirst({ where: { userId: athleteId, status: { startsWith: 'COACH:' } } });
+    if (!coachPlanWorkout) {
+      coachPlanWorkout = await prisma.workout.create({ data: { userId: athleteId, name: template.name, status: `COACH:${template.id}` } });
     } else {
-      await prisma.workout.update({ where: { id: planWorkout.id }, data: { name: template.name, status: `PLAN:${template.id}` } });
-      await prisma.workoutExercise.deleteMany({ where: { workoutId: planWorkout.id } });
+      await prisma.workout.update({ where: { id: coachPlanWorkout.id }, data: { name: template.name, status: `COACH:${template.id}` } });
+      await prisma.workoutExercise.deleteMany({ where: { workoutId: coachPlanWorkout.id } });
     }
     await prisma.workoutExercise.createMany({
       data: template.exercises.map((exercise, index) => ({
-        workoutId: planWorkout.id,
+        workoutId: coachPlanWorkout.id,
         name: exercise.name,
         sets: exercise.sets,
         reps: exercise.reps,

@@ -78,8 +78,9 @@ function formatSleepResponse(entries) {
 }
 
 async function getPlannedWorkout(userId) {
+  // Doar planul user-ului propriu (PLAN:*), NU planul atribuit de coach (COACH:*)
   return prisma.workout.findFirst({
-    where: { userId, status: { startsWith: 'PLAN' } },
+    where: { userId, status: { startsWith: 'PLAN:' } },
     include: { exercises: { orderBy: { order: 'asc' } } },
     orderBy: { updatedAt: 'desc' },
   });
@@ -306,6 +307,29 @@ router.get('/exercises', async (req, res) => {
   res.json((workout.exercises || []).map(normalizeWorkoutExercise));
 });
 
+// GET /coach-plan — returneaza planul atribuit de coach (separat de planul propriu)
+router.get('/coach-plan', async (req, res) => {
+  const coachWorkout = await prisma.workout.findFirst({
+    where: { userId: req.user.id, status: { startsWith: 'COACH:' } },
+    include: { exercises: { orderBy: { order: 'asc' } } },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (!coachWorkout) return res.json({ plan: null });
+  // Cauta numele coach-ului
+  const coachLink = await prisma.coachClient.findFirst({
+    where: { athleteId: req.user.id, status: 'ACCEPTED' },
+    include: { coach: { select: { name: true } } },
+  });
+  res.json({
+    plan: {
+      id: coachWorkout.id,
+      name: coachWorkout.name,
+      coachName: coachLink?.coach?.name || 'Coach',
+      exercises: (coachWorkout.exercises || []).map(normalizeWorkoutExercise),
+    },
+  });
+});
+
 router.get('/exercises/library', async (req, res) => {
   const q = String(req.query?.q || '').trim();
   const muscle = String(req.query?.muscle || '').trim();
@@ -336,7 +360,7 @@ router.patch('/exercises/bulk-done', async (req, res) => {
 
 router.patch('/exercises/:id/toggle', async (req, res) => {
   const exercise = await prisma.workoutExercise.findFirst({
-    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } },
+    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
   });
   if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
   const updated = await prisma.workoutExercise.update({
@@ -350,7 +374,7 @@ router.patch('/exercises/:id/toggle', async (req, res) => {
 // Atletul poate modifica orice exercitiu din workout-ul lui de plan
 router.patch('/exercises/:id', async (req, res) => {
   const exercise = await prisma.workoutExercise.findFirst({
-    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } },
+    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
   });
   if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
 
@@ -404,7 +428,7 @@ router.patch('/exercises/:id', async (req, res) => {
 
 
 router.delete('/exercises/:id', async (req, res) => {
-  await prisma.workoutExercise.deleteMany({ where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN' } } } });
+  await prisma.workoutExercise.deleteMany({ where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } } });
   res.json({ ok: true });
 });
 

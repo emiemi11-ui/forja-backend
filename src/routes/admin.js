@@ -144,6 +144,7 @@ router.get('/inbox', async (req, res) => {
   };
   const normalizeStatus = (status = '') => {
     const value = String(status || '').toLowerCase();
+    if (value === 'resolved') return 'resolved';
     if (value.includes('read') || value.includes('citit')) return 'citit';
     return 'nou';
   };
@@ -171,6 +172,23 @@ router.patch('/inbox/:id/read', async (req, res) => {
   } catch (err) {
     console.error('[admin/inbox/read] error:', err);
     res.status(404).json({ error: 'Mesaj inexistent' });
+  }
+});
+
+// PATCH /admin/inbox/:id/resolve — toggle rezolvat / nerezolvat
+router.patch('/inbox/:id/resolve', async (req, res) => {
+  try {
+    const current = await prisma.contactSubmission.findUnique({ where: { id: req.params.id } });
+    if (!current) return res.status(404).json({ error: 'Mesaj inexistent' });
+    const newStatus = current.status === 'resolved' ? 'citit' : 'resolved';
+    const updated = await prisma.contactSubmission.update({
+      where: { id: req.params.id },
+      data: { status: newStatus },
+    });
+    res.json({ ok: true, id: updated.id, status: updated.status });
+  } catch (err) {
+    console.error('[admin/inbox/resolve] error:', err);
+    res.status(500).json({ error: 'Eroare la actualizare status' });
   }
 });
 

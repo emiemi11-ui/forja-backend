@@ -141,6 +141,35 @@ router.get('/admin/list', authenticate, requireRole('ADMIN'), async (req, res) =
   }
 });
 
+// GET /upgrade/admin/downgrades — lista istoric downgrades
+router.get('/admin/downgrades', authenticate, requireRole('ADMIN'), async (req, res) => {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      where: { action: 'PLAN_DOWNGRADE' },
+      orderBy: { createdAt: 'desc' }, take: 100,
+    });
+    const userIds = [...new Set(logs.map(l => l.userId).filter(Boolean))];
+    const users = userIds.length ? await prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true, plan: true },
+    }) : [];
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    res.json({
+      downgrades: logs.map(log => {
+        const data = parseDetail(log.detail);
+        return {
+          id: log.id, userId: log.userId, user: userMap[log.userId] || null,
+          from: data.from, to: data.to || 'FREE', reason: data.reason || 'user_cancellation',
+          createdAt: log.createdAt,
+        };
+      }),
+    });
+  } catch (err) {
+    console.error('[upgrade/admin/downgrades] error:', err);
+    res.status(500).json({ error: 'Eroare server la încărcare downgrades.' });
+  }
+});
+
 router.post('/admin/:id/approve', authenticate, requireRole('ADMIN'), async (req, res) => {
   try {
     const log = await prisma.auditLog.findUnique({ where: { id: req.params.id } });

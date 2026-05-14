@@ -314,6 +314,13 @@ router.post('/food/custom', async (req, res) => {
   if (!name) return res.status(400).json({ error: 'Completează denumirea alimentului.' });
   const quantity = String(req.body?.quantity || '1 porție').trim();
   const displayName = quantity ? `${name} (${quantity})` : name;
+  const imgValue = req.body?.img || '';
+  console.log('[food/custom] CREATE', {
+    name: displayName,
+    hasImg: !!imgValue,
+    imgLength: imgValue.length,
+    imgStart: imgValue.substring(0, 50),
+  });
   const customFood = {
     id: `cf-${Date.now()}`,
     name: displayName,
@@ -324,7 +331,7 @@ router.post('/food/custom', async (req, res) => {
     c: Number(req.body?.c || req.body?.carbs || 0),
     f: Number(req.body?.f || req.body?.fat || 0),
     fib: Number(req.body?.fib || 0),
-    img: req.body?.img || '',
+    img: imgValue,
     recipe: req.body?.recipe || '',
     custom: true,
   };
@@ -335,6 +342,7 @@ router.post('/food/custom', async (req, res) => {
     detail: customFood,
     status: 'SUCCESS',
   });
+  console.log('[food/custom] SAVED to auditLog, returning to client');
   res.status(201).json(customFood);
 });
 

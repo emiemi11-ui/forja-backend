@@ -123,19 +123,21 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
     try {
       const data = typeof log.detail === 'string' ? JSON.parse(log.detail) : (log.detail || log.payload || {});
       if (data?.name) {
-        // Stocheaza prima aparitie (cea mai recenta dat fiind orderBy desc)
         if (!customFoodByName.has(data.name)) {
           customFoodByName.set(data.name, data);
         }
       }
     } catch { /* skip log invalid */ }
   }
+  console.log('[dailySummary] custom foods loaded:', customFoodByName.size, 'names:', [...customFoodByName.keys()]);
 
   const meals = mealRows.map((meal) => {
     const staticFood = findFoodByName(meal.foodName);
     const customFood = customFoodByName.get(meal.foodName);
-    // Custom food are prioritate (e specific user-ului)
     const foodSource = customFood || staticFood;
+    if (customFood) {
+      console.log('[dailySummary] meal', meal.foodName, '→ custom match, hasImg:', !!customFood.img);
+    }
     return {
       id: meal.id,
       meal: meal.mealType,

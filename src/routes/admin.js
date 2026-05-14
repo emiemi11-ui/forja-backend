@@ -160,6 +160,34 @@ router.get('/inbox', async (req, res) => {
   })));
 });
 
+// PATCH /admin/inbox/:id/read — marcheaza un mesaj ca citit
+router.patch('/inbox/:id/read', async (req, res) => {
+  try {
+    const updated = await prisma.contactSubmission.update({
+      where: { id: req.params.id },
+      data: { status: 'citit' },
+    });
+    res.json({ ok: true, id: updated.id, status: updated.status });
+  } catch (err) {
+    console.error('[admin/inbox/read] error:', err);
+    res.status(404).json({ error: 'Mesaj inexistent' });
+  }
+});
+
+// POST /admin/inbox/mark-all-read — marcheaza toate mesajele ca citite
+router.post('/inbox/mark-all-read', async (req, res) => {
+  try {
+    const result = await prisma.contactSubmission.updateMany({
+      where: { status: { not: 'citit' } },
+      data: { status: 'citit' },
+    });
+    res.json({ ok: true, markedRead: result.count });
+  } catch (err) {
+    console.error('[admin/inbox/mark-all-read] error:', err);
+    res.status(500).json({ error: 'Eroare la marcare.' });
+  }
+});
+
 router.get('/settings', async (req, res) => {
   const settings = await getAppSettings(prisma);
   res.json({ settings });

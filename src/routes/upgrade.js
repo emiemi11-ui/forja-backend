@@ -1,5 +1,5 @@
 import express from 'express';
-import prisma from '../prisma.js';
+import prisma from '../lib/prisma.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 const router = express.Router();

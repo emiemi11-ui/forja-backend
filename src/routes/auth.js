@@ -128,22 +128,25 @@ router.post('/register', signupCheck, async (req, res) => {
     if (isPaidPlan) {
       const PRICES = { PRO: 29, TEAM: 49 };
       const requestId = `UPG-${Date.now().toString(36).toUpperCase()}`;
+      const payload = {
+        requestId,
+        fromPlan: 'FREE',
+        toPlan: validPlan,
+        email: user.email,
+        amount: PRICES[validPlan] || 0,
+        iban: 'RO49AAAA1B31007593840000',
+        bank: 'Banca Transilvania',
+        beneficiar: 'FORJA TECH SRL',
+        status: 'PENDING',
+        type: 'REGISTER',
+      };
       const log = await prisma.auditLog.create({
         data: {
           userId: user.id,
           action: 'UPGRADE_REQUEST',
-          payload: {
-            requestId,
-            fromPlan: 'FREE',
-            toPlan: validPlan,
-            email: user.email,
-            amount: PRICES[validPlan] || 0,
-            iban: 'RO49AAAA1B31007593840000',
-            bank: 'Banca Transilvania',
-            beneficiar: 'FORJA TECH SRL',
-            status: 'PENDING',
-            type: 'REGISTER',
-          },
+          type: 'billing',
+          status: 'INFO',
+          detail: JSON.stringify(payload),
         },
       });
       upgradeRequest = {
@@ -227,7 +230,12 @@ router.post('/login', async (req, res) => {
         where: { userId: user.id, action: 'UPGRADE_REQUEST' },
         orderBy: { createdAt: 'desc' },
       });
-      if (pendingReq?.payload?.status === 'PENDING' && pendingReq?.payload?.type === 'REGISTER') {
+      let pendingData = null;
+      if (pendingReq?.detail) {
+        try { pendingData = typeof pendingReq.detail === 'string' ? JSON.parse(pendingReq.detail) : pendingReq.detail; }
+        catch { pendingData = null; }
+      }
+      if (pendingData?.status === 'PENDING' && pendingData?.type === 'REGISTER') {
         return res.status(403).json({
           error: 'Contul așteaptă confirmarea plății. Verifică emailul pentru instrucțiuni IBAN. După plată, adminul va activa contul și vei primi un email de confirmare.',
           code: 'PAYMENT_PENDING',

@@ -230,7 +230,21 @@ router.get('/meals', async (req, res) => {
 });
 
 router.post('/meals', async (req, res) => {
-  const food = foodById(req.body?.foodId);
+  const foodId = String(req.body?.foodId || '');
+  let food = foodById(foodId);
+  // Daca nu e in catalog, cauta in audit log (custom foods)
+  if (!food && foodId.startsWith('cf-')) {
+    const log = await prisma.auditLog.findFirst({
+      where: { userId: req.user.id, action: `CUSTOM_FOOD:${foodId}` },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (log) {
+      let data;
+      try { data = typeof log.detail === 'string' ? JSON.parse(log.detail) : (log.detail || log.payload || {}); }
+      catch { data = {}; }
+      food = { id: data.id, name: data.name, kcal: Number(data.kcal) || 0, p: Number(data.p) || 0, c: Number(data.c) || 0, f: Number(data.f) || 0, fib: Number(data.fib) || 0 };
+    }
+  }
   if (!food) return res.status(404).json({ error: 'Aliment negăsit' });
   const mealType = normalizeMealType(req.body?.meal);
   const row = await prisma.nutritionLog.create({
@@ -267,7 +281,22 @@ router.delete('/meals/:id', async (req, res) => {
 
 router.get('/food', async (req, res) => {
   const q = String(req.query?.q || '').trim();
-  res.json(searchFood({ q }).slice(0, 25));
+  // Static foods + user's custom foods
+  const staticFoods = searchFood({ q }).slice(0, 25);
+  // Custom foods stored as auditLog with action starting CUSTOM_FOOD:
+  const customLogs = await prisma.auditLog.findMany({
+    where: { userId: req.user.id, action: { startsWith: 'CUSTOM_FOOD:' } },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
+  });
+  const customFoods = customLogs
+    .map(l => {
+      try { return typeof l.detail === 'string' ? JSON.parse(l.detail) : (l.detail || l.payload || {}); }
+      catch { return {}; }
+    })
+    .filter(f => f && f.id && (!q || (f.name || '').toLowerCase().includes(q.toLowerCase())));
+  // User's custom foods first
+  res.json([...customFoods, ...staticFoods].slice(0, 30));
 });
 
 router.post('/food/custom', async (req, res) => {

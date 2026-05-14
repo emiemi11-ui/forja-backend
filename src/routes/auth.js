@@ -93,13 +93,19 @@ router.post('/register', signupCheck, async (req, res) => {
     };
     const validPlan = planAliases[normalizedPlan] || defaultPlanByRole[validRole] || 'FREE';
 
+    // Pentru USER cu plan platit (PRO/TEAM), contul se creeaza blocked + cu cerere upgrade
+    const isPaidPlan = validRole === 'USER' && (validPlan === 'PRO' || validPlan === 'TEAM');
+    const initialPlan = isPaidPlan ? 'FREE' : validPlan; // pana la aprobare ramane FREE
+    const initialBlocked = isPaidPlan;
+
     const user = await prisma.user.create({
       data: {
         name: name.trim(),
         email: email.toLowerCase().trim(),
         password: hashedPassword,
         role: validRole,
-        plan: validPlan,
+        plan: initialPlan,
+        blocked: initialBlocked,
         avatar: name.trim()[0].toUpperCase(),
         bio: extra?.bio || null,
         specialization: extra?.specialization || null,
@@ -116,6 +122,47 @@ router.post('/register', signupCheck, async (req, res) => {
     await prisma.userGoals.create({
       data: { userId: user.id },
     });
+
+    // Daca plan platit la register, creeaza cerere de upgrade
+    let upgradeRequest = null;
+    if (isPaidPlan) {
+      const PRICES = { PRO: 29, TEAM: 49 };
+      const requestId = `UPG-${Date.now().toString(36).toUpperCase()}`;
+      const log = await prisma.auditLog.create({
+        data: {
+          userId: user.id,
+          action: 'UPGRADE_REQUEST',
+          payload: {
+            requestId,
+            fromPlan: 'FREE',
+            toPlan: validPlan,
+            email: user.email,
+            amount: PRICES[validPlan] || 0,
+            iban: 'RO49AAAA1B31007593840000',
+            bank: 'Banca Transilvania',
+            beneficiar: 'FORJA TECH SRL',
+            status: 'PENDING',
+            type: 'REGISTER',
+          },
+        },
+      });
+      upgradeRequest = {
+        requestId,
+        plan: validPlan,
+        amount: PRICES[validPlan] || 0,
+        iban: 'RO49AAAA1B31007593840000',
+        bank: 'Banca Transilvania',
+        beneficiar: 'FORJA TECH SRL',
+        email: user.email,
+      };
+      // Pentru cont blocat: NU trimitem token, user-ul nu poate intra pana la aprobare
+      return res.status(201).json({
+        ok: true,
+        pendingPayment: true,
+        upgradeRequest,
+        message: 'Cont creat. Plătește abonamentul pentru a-l activa.',
+      });
+    }
 
     const token = signToken({ userId: user.id, role: user.role });
     const { password: _, ...safeUser } = user;
@@ -175,6 +222,17 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Email sau parolă greșite' });
     }
     if (user.blocked) {
+      // Verifica daca e blocat din motiv de plata pending
+      const pendingReq = await prisma.auditLog.findFirst({
+        where: { userId: user.id, action: 'UPGRADE_REQUEST' },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (pendingReq?.payload?.status === 'PENDING' && pendingReq?.payload?.type === 'REGISTER') {
+        return res.status(403).json({
+          error: 'Contul așteaptă confirmarea plății. Verifică emailul pentru instrucțiuni IBAN. După plată, adminul va activa contul și vei primi un email de confirmare.',
+          code: 'PAYMENT_PENDING',
+        });
+      }
       return res.status(403).json({ error: 'Contul este blocat. Contactează administratorul.' });
     }
 

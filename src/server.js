@@ -19,6 +19,7 @@ import publicRoutes from './routes/public.js';
 import challengesRoutes from './routes/challenges.js';
 import searchRoutes from './routes/search.js';
 import achievementsRoutes from './routes/achievements.js';
+import upgradeRoutes from './routes/upgrade.js';
 import { verifyToken } from './utils/jwt.js';
 
 const app = express();
@@ -213,6 +214,7 @@ api.use('/contact', aliasRouter(athleteRoutes, '/contact'));
 api.use('/challenges', challengesRoutes);
 api.use('/search', searchRoutes);
 api.use('/achievements', achievementsRoutes);
+api.use('/upgrade', upgradeRoutes);
 
 // 404
 app.use((req, res) => {

@@ -101,6 +101,11 @@ io.on('connection', async (socket) => {
   if (!user) return;
   socket.join(`user:${user.id}`);
 
+  // Admins join "admins" room pentru notificari real-time in inbox
+  if (user.role === 'ADMIN') {
+    socket.join('admins');
+  }
+
   // Track online presence
   const prevCount = global.__onlineConnections.get(user.id) || 0;
   global.__onlineConnections.set(user.id, prevCount + 1);

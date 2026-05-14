@@ -58,6 +58,12 @@ router.post('/contact', async (req, res) => {
     },
   });
 
+  // Notifica admini in real-time
+  global.__io?.to('admins').emit('inbox:new', {
+    kind: 'contact',
+    submission: { id: submission.id, name, email, subject, type, createdAt: submission.createdAt },
+  });
+
   res.status(201).json({ ok: true, id: submission.id });
 });
 
@@ -91,6 +97,12 @@ router.post('/waitlist', async (req, res) => {
       type: normalizedType,
       status: 'nou',
     },
+  });
+
+  // Notifica admini real-time
+  global.__io?.to('admins').emit('inbox:new', {
+    kind: 'waitlist',
+    submission: { id: submission.id, email, type: normalizedType, createdAt: submission.createdAt },
   });
 
   res.status(201).json({ ok: true, id: submission.id });

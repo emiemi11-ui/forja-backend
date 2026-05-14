@@ -149,6 +149,11 @@ router.post('/register', signupCheck, async (req, res) => {
           detail: JSON.stringify(payload),
         },
       });
+      // Notifica admini real-time
+      global.__io?.to('admins').emit('inbox:new', {
+        kind: 'upgrade',
+        request: { id: log.id, ...payload, userId: user.id, userName: user.name },
+      });
       upgradeRequest = {
         requestId,
         plan: validPlan,
@@ -203,6 +208,11 @@ router.post('/forgot-password', async (req, res) => {
         status: user.blocked ? 'WARNING' : 'INFO',
         detail: JSON.stringify({ email: user.email, role: user.role, source: 'login-page' }),
       },
+    });
+    // Notifica admini real-time
+    global.__io?.to('admins').emit('inbox:new', {
+      kind: 'password-reset',
+      request: { userId: user.id, email: user.email, role: user.role },
     });
   }
 

@@ -64,6 +64,11 @@ router.post('/request', authenticate, async (req, res) => {
         detail: stringifyDetail(payload),
       },
     });
+    // Notifica admini real-time
+    global.__io?.to('admins').emit('inbox:new', {
+      kind: 'upgrade',
+      request: { id: log.id, ...payload, userId: req.user.id, userName: req.user.name },
+    });
     res.json({
       ok: true, requestId, iban: FORJA_IBAN, bank: FORJA_BANK, beneficiar: FORJA_BENEFICIAR,
       amount, plan, email: userEmail, logId: log.id,
@@ -93,11 +98,19 @@ router.post('/cancel', authenticate, async (req, res) => {
     }
     const oldPlan = req.user.plan;
     await prisma.user.update({ where: { id: req.user.id }, data: { plan: targetPlan } });
-    await prisma.auditLog.create({
+    const downgradeLog = await prisma.auditLog.create({
       data: {
         userId: req.user.id, action: 'PLAN_DOWNGRADE',
         type: 'billing', status: 'WARNING',
         detail: stringifyDetail({ from: oldPlan, to: targetPlan, reason: 'user_cancellation' }),
+      },
+    });
+    // Notifica admini real-time
+    global.__io?.to('admins').emit('inbox:new', {
+      kind: 'downgrade',
+      downgrade: {
+        id: downgradeLog.id, userId: req.user.id, userName: req.user.name,
+        from: oldPlan, to: targetPlan, createdAt: downgradeLog.createdAt,
       },
     });
     res.json({ ok: true, message: `Plan schimbat: ${oldPlan} → ${targetPlan}.`, newPlan: targetPlan });

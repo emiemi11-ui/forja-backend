@@ -87,7 +87,7 @@ export async function ensureUserGoals(prisma, userId) {
 
 export async function getUserDailySummary(prisma, userId, { day = new Date() } = {}) {
   const { start, end } = getDayWindow(day);
-  const [goals, mealRows, waterRows, latestSleep, stepsMeta, plannedWorkout, activeWorkout] = await Promise.all([
+  const [goals, mealRows, waterRows, latestSleep, stepsMeta, plannedWorkout, activeWorkout, customFoodLogs] = await Promise.all([
     ensureUserGoals(prisma, userId),
     prisma.nutritionLog.findMany({
       where: { userId, date: { gte: start, lt: end }, mealType: { not: 'WATER' } },
@@ -109,10 +109,33 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     }),
+    // Fetch custom foods (stocate in audit_log) ca sa avem acces la img-uri custom
+    prisma.auditLog.findMany({
+      where: { userId, action: { startsWith: 'CUSTOM_FOOD:' } },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    }),
   ]);
 
+  // Map custom foods by name pentru lookup rapid
+  const customFoodByName = new Map();
+  for (const log of customFoodLogs) {
+    try {
+      const data = typeof log.detail === 'string' ? JSON.parse(log.detail) : (log.detail || log.payload || {});
+      if (data?.name) {
+        // Stocheaza prima aparitie (cea mai recenta dat fiind orderBy desc)
+        if (!customFoodByName.has(data.name)) {
+          customFoodByName.set(data.name, data);
+        }
+      }
+    } catch { /* skip log invalid */ }
+  }
+
   const meals = mealRows.map((meal) => {
-    const food = findFoodByName(meal.foodName);
+    const staticFood = findFoodByName(meal.foodName);
+    const customFood = customFoodByName.get(meal.foodName);
+    // Custom food are prioritate (e specific user-ului)
+    const foodSource = customFood || staticFood;
     return {
       id: meal.id,
       meal: meal.mealType,
@@ -122,8 +145,8 @@ export async function getUserDailySummary(prisma, userId, { day = new Date() } =
       p: Number(meal.protein || 0),
       c: Number(meal.carbs || 0),
       f: Number(meal.fat || 0),
-      fib: Number(food?.fib || 0),
-      img: food?.img || null,
+      fib: Number(foodSource?.fib || 0),
+      img: foodSource?.img || null,
       time: formatClock(meal.date),
       date: meal.date,
     };

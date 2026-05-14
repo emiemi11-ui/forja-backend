@@ -242,7 +242,15 @@ router.post('/meals', async (req, res) => {
       let data;
       try { data = typeof log.detail === 'string' ? JSON.parse(log.detail) : (log.detail || log.payload || {}); }
       catch { data = {}; }
-      food = { id: data.id, name: data.name, kcal: Number(data.kcal) || 0, p: Number(data.p) || 0, c: Number(data.c) || 0, f: Number(data.f) || 0, fib: Number(data.fib) || 0 };
+      food = {
+        id: data.id, name: data.name,
+        kcal: Number(data.kcal) || 0,
+        p: Number(data.p) || 0,
+        c: Number(data.c) || 0,
+        f: Number(data.f) || 0,
+        fib: Number(data.fib) || 0,
+        img: data.img || '',  // FIX: pastreaza imaginea custom uploaded
+      };
     }
   }
   if (!food) return res.status(404).json({ error: 'Aliment negăsit' });

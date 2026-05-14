@@ -11,8 +11,7 @@ router.use(authenticate, requireRole('ADMIN'));
 function formatAuditType(type = '') {
   const value = String(type || '').toLowerCase();
   if (value.includes('auth')) return 'auth';
-  if (value.includes('moder')) return 'moderare';
-  if (value.includes('fin')) return 'finante';
+  if (value.includes('fin') || value.includes('billing') || value.includes('upgrade') || value.includes('downgrade') || value.includes('plan')) return 'finante';
   return 'setari';
 }
 

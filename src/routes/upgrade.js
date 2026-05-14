@@ -74,22 +74,33 @@ router.post('/request', authenticate, async (req, res) => {
   }
 });
 
-// POST /upgrade/cancel
+// POST /upgrade/cancel — accepta target plan (PRO sau FREE)
 router.post('/cancel', authenticate, async (req, res) => {
   try {
-    if (req.user.plan === 'FREE') {
+    const targetPlan = String(req.body?.targetPlan || 'FREE').toUpperCase();
+    // Valideaza: target trebuie sa fie mai mic decat planul curent
+    const PLAN_LEVEL = { FREE: 0, PRO: 1, TEAM: 2 };
+    const curLevel = PLAN_LEVEL[req.user.plan] ?? 0;
+    const targetLevel = PLAN_LEVEL[targetPlan] ?? 0;
+    if (curLevel === 0) {
       return res.status(400).json({ error: 'Ești deja pe planul FREE.' });
     }
+    if (targetLevel >= curLevel) {
+      return res.status(400).json({ error: `Planul "${targetPlan}" nu e un downgrade de la "${req.user.plan}".` });
+    }
+    if (!['FREE', 'PRO'].includes(targetPlan)) {
+      return res.status(400).json({ error: 'Target plan invalid.' });
+    }
     const oldPlan = req.user.plan;
-    await prisma.user.update({ where: { id: req.user.id }, data: { plan: 'FREE' } });
+    await prisma.user.update({ where: { id: req.user.id }, data: { plan: targetPlan } });
     await prisma.auditLog.create({
       data: {
         userId: req.user.id, action: 'PLAN_DOWNGRADE',
         type: 'billing', status: 'WARNING',
-        detail: stringifyDetail({ from: oldPlan, to: 'FREE', reason: 'user_cancellation' }),
+        detail: stringifyDetail({ from: oldPlan, to: targetPlan, reason: 'user_cancellation' }),
       },
     });
-    res.json({ ok: true, message: 'Abonamentul a fost anulat. Ești acum pe planul FREE.' });
+    res.json({ ok: true, message: `Plan schimbat: ${oldPlan} → ${targetPlan}.`, newPlan: targetPlan });
   } catch (err) {
     console.error('[upgrade/cancel] error:', err);
     res.status(500).json({ error: 'Eroare server la downgrade.' });

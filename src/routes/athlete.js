@@ -519,10 +519,10 @@ router.post('/workout/start', async (req, res) => {
           name: exercise.name,
           sets: exercise.sets,
           reps: exercise.reps,
-          restSec: exercise.restSec,
+          restSec: exercise.restSec,  // copiaza pauza setata
           order: exercise.order,
           done: false,
-          weight: 0,
+          weight: exercise.weight || 0,  // FIX: copiaza kg-ul setat (era hardcoded la 0)
           setsCompleted: 0,
         })),
       },

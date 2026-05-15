@@ -214,6 +214,7 @@ export function normalizeActiveSession(activeWorkout) {
       setsTotal: exercise.sets,
       reps: Number.isFinite(exercise.reps) ? exercise.reps : String(exercise.reps || '10'),
       restSec: exercise.restSec || 90,
+      weight: Number(exercise.weight || 0),  // FIX: include kg-ul setat (apare in UI cu rep target)
     };
   });
   const progress = Object.fromEntries(

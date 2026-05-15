@@ -213,6 +213,91 @@ router.get('/athletes/:id', async (req, res) => {
   });
 });
 
+// GET /api/coach/athletes/:athleteId/workout-history-7days
+// Returnează istoricul antrenamentelor unui atlet pe ultimele 7 zile,
+// agregat per zi. Doar coach-ul cu relație ACCEPTED poate vedea aceste date.
+router.get('/athletes/:athleteId/workout-history-7days', async (req, res) => {
+  // Verific că există o relație ACCEPTED între coach și atlet
+  const link = await prisma.coachClient.findUnique({
+    where: { coachId_athleteId: { coachId: req.user.id, athleteId: req.params.athleteId } },
+    include: { athlete: { select: { id: true, name: true, avatar: true, avatarUrl: true } } },
+  });
+  if (!link || link.status !== 'ACCEPTED') {
+    return res.status(403).json({ error: 'Nu ai acces la istoricul acestui atlet' });
+  }
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId: link.athlete.id,
+      status: { in: ['COMPLETED', 'ABANDONED'] },
+      createdAt: { gte: sevenDaysAgo },
+    },
+    include: { exercises: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Construiesc grilă cu 7 zile (azi + 6 anterioare)
+  const dayMap = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    dayMap[key] = {
+      date: key,
+      iso: d.toISOString(),
+      workouts: 0,
+      totalSets: 0,
+      completedSets: 0,
+      totalExercises: 0,
+      completedExercises: 0,
+      durationSeconds: 0,
+      details: [],
+    };
+  }
+
+  for (const w of workouts) {
+    const key = new Date(w.createdAt).toISOString().slice(0, 10);
+    if (!dayMap[key]) continue;
+    const exercises = w.exercises || [];
+    const totalSets = exercises.reduce((s, e) => s + Number(e.sets || 0), 0);
+    const compSets = exercises.reduce((s, e) => s + Math.min(Number(e.sets || 0), Number(e.setsCompleted || 0)), 0);
+    const compEx = exercises.filter((e) => Number(e.setsCompleted || 0) >= Number(e.sets || 0) && Number(e.sets || 0) > 0).length;
+    const dur = Math.max(0, Math.floor((new Date(w.updatedAt) - new Date(w.createdAt)) / 1000));
+    dayMap[key].workouts += 1;
+    dayMap[key].totalSets += totalSets;
+    dayMap[key].completedSets += compSets;
+    dayMap[key].totalExercises += exercises.length;
+    dayMap[key].completedExercises += compEx;
+    dayMap[key].durationSeconds += Math.min(dur, 60 * 60 * 4); // cap la 4h
+    dayMap[key].details.push({
+      id: w.id,
+      name: w.name,
+      status: w.status,
+      exercises: exercises.map((e) => ({
+        name: e.name,
+        setsCompleted: Number(e.setsCompleted || 0),
+        setsTotal: Number(e.sets || 0),
+      })),
+    });
+  }
+
+  res.json({
+    athlete: {
+      id: link.athlete.id,
+      name: link.athlete.name,
+      avatar: link.athlete.avatar,
+      avatarUrl: link.athlete.avatarUrl,
+    },
+    days: Object.values(dayMap),
+  });
+});
+
 router.post('/athletes/invite', async (req, res) => {
   const { email, goal, plan } = req.body;
   const athlete = await prisma.user.findUnique({ where: { email } });

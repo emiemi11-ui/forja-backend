@@ -119,13 +119,28 @@ async function getActiveWorkout(userId) {
 }
 
 function summarizeHistoryRows(rows) {
-  return rows.map((row) => ({
-    id: row.id,
-    name: row.name,
-    status: row.status,
-    createdAt: row.createdAt,
-    exercises: row.exercises?.length || 0,
-  }));
+  return rows.map((row) => {
+    const exercises = row.exercises || [];
+    const totalSets = exercises.reduce((sum, ex) => sum + Number(ex.sets || 0), 0);
+    const completedSets = exercises.reduce((sum, ex) => sum + Math.min(Number(ex.sets || 0), Number(ex.setsCompleted || 0)), 0);
+    const completedExercises = exercises.filter((ex) => Number(ex.setsCompleted || 0) >= Number(ex.sets || 0) && Number(ex.sets || 0) > 0).length;
+    return {
+      id: row.id,
+      name: row.name,
+      status: row.status,
+      createdAt: row.createdAt,
+      exercises: exercises.length,
+      exercisesCompleted: completedExercises,
+      totalSets,
+      completedSets,
+      exerciseDetails: exercises.map((ex) => ({
+        name: ex.name,
+        setsCompleted: Number(ex.setsCompleted || 0),
+        setsTotal: Number(ex.sets || 0),
+        done: !!ex.done,
+      })),
+    };
+  });
 }
 
 // Sleep
@@ -694,6 +709,115 @@ router.get('/workout/history', async (req, res) => {
     take: 20,
   });
   res.json(summarizeHistoryRows(workouts));
+});
+
+// NOU: Istoric antrenamente pe ultimele 7 zile, agregat per zi
+router.get('/workout/history-7days', async (req, res) => {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const workouts = await prisma.workout.findMany({
+    where: {
+      userId: req.user.id,
+      status: { in: ['COMPLETED', 'ABANDONED'] },
+      createdAt: { gte: sevenDaysAgo },
+    },
+    include: { exercises: true },
+    orderBy: { createdAt: 'asc' },
+  });
+
+  // Grupez per zi (YYYY-MM-DD)
+  const dayMap = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    dayMap[key] = {
+      date: key,
+      iso: d.toISOString(),
+      workouts: 0,
+      totalSets: 0,
+      completedSets: 0,
+      totalExercises: 0,
+      completedExercises: 0,
+      durationSeconds: 0,
+      details: [],
+    };
+  }
+
+  for (const w of workouts) {
+    const key = new Date(w.createdAt).toISOString().slice(0, 10);
+    if (!dayMap[key]) continue;
+    const exercises = w.exercises || [];
+    const totalSets = exercises.reduce((s, e) => s + Number(e.sets || 0), 0);
+    const compSets = exercises.reduce((s, e) => s + Math.min(Number(e.sets || 0), Number(e.setsCompleted || 0)), 0);
+    const compEx = exercises.filter((e) => Number(e.setsCompleted || 0) >= Number(e.sets || 0) && Number(e.sets || 0) > 0).length;
+    // Durata estimată: timpul între createdAt și updatedAt
+    const dur = Math.max(0, Math.floor((new Date(w.updatedAt) - new Date(w.createdAt)) / 1000));
+    dayMap[key].workouts += 1;
+    dayMap[key].totalSets += totalSets;
+    dayMap[key].completedSets += compSets;
+    dayMap[key].totalExercises += exercises.length;
+    dayMap[key].completedExercises += compEx;
+    dayMap[key].durationSeconds += Math.min(dur, 60 * 60 * 4); // cap la 4h ca să nu cumuleze zile întregi dacă a uitat session-ul deschis
+    dayMap[key].details.push({
+      id: w.id,
+      name: w.name,
+      status: w.status,
+      exercises: exercises.map((e) => ({
+        name: e.name,
+        setsCompleted: Number(e.setsCompleted || 0),
+        setsTotal: Number(e.sets || 0),
+      })),
+    });
+  }
+
+  res.json(Object.values(dayMap));
+});
+
+// NOU: Exerciții făcute astăzi (din active session sau ultima completată azi)
+router.get('/workout/today-progress', async (req, res) => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+
+  // Caut workout-uri (ACTIVE, COMPLETED, ABANDONED) începute astăzi
+  const todaysWorkouts = await prisma.workout.findMany({
+    where: {
+      userId: req.user.id,
+      status: { in: ['ACTIVE', 'COMPLETED', 'ABANDONED'] },
+      createdAt: { gte: start, lt: end },
+    },
+    include: { exercises: { orderBy: { order: 'asc' } } },
+    orderBy: { updatedAt: 'desc' },
+  });
+
+  // Agreg exercițiile bifate din toate sesiunile de astăzi
+  const exerciseProgress = [];
+  for (const w of todaysWorkouts) {
+    for (const ex of (w.exercises || [])) {
+      const completed = Math.min(Number(ex.sets || 0), Number(ex.setsCompleted || 0));
+      if (completed > 0 || ex.done) {
+        exerciseProgress.push({
+          name: ex.name,
+          setsCompleted: completed,
+          setsTotal: Number(ex.sets || 0),
+          done: !!ex.done,
+          workoutName: w.name,
+          workoutStatus: w.status,
+        });
+      }
+    }
+  }
+
+  res.json({
+    count: exerciseProgress.length,
+    exercises: exerciseProgress,
+  });
 });
 
 // Discover (public marketplace)

@@ -53,6 +53,8 @@ export function normalizeWorkoutExercise(exercise) {
   const lib = findExerciseByName(exercise?.name || '');
   const repsLabel = Number.isFinite(exercise?.reps) ? String(exercise.reps) : String(exercise?.reps || '10');
   const weight = exercise?.weight != null ? Number(exercise.weight) : 0;
+  const setsTotal = exercise.sets;
+  const setsCompletedRaw = Math.max(0, Math.min(setsTotal, Number(exercise.setsCompleted || 0)));
   return {
     id: exercise.id,
     libId: lib?.id || null,
@@ -61,7 +63,8 @@ export function normalizeWorkoutExercise(exercise) {
     equip: lib?.equip || 'Bodyweight',
     icon: lib?.icon || '💪',
     sets: `${exercise.sets}×${repsLabel}`,
-    setsTotal: exercise.sets,
+    setsTotal,
+    setsCompleted: setsCompletedRaw,  // NOU: pentru afișare progres "X/Y seturi"
     reps: Number.isFinite(exercise?.reps) ? exercise.reps : repsLabel,
     weight,  // FIX: include weight (0 = fara greutate, frontend ascunde)
     detail: lib?.detail || (weight ? `${weight} kg` : 'Plan personalizat'),

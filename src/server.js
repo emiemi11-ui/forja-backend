@@ -215,6 +215,11 @@ api.use('/food', aliasRouter(athleteRoutes, '/food'));
 api.use('/today', aliasRouter(athleteRoutes, '/today'));
 api.use('/contact', aliasRouter(athleteRoutes, '/contact'));
 
+// /athlete prefix — expune toate rutele din athleteRoutes cu prefixul /athlete
+// (necesar pentru /athlete/coach-plan, /athlete/self-plan-status,
+// /athlete/workouts/:id/toggle-active folosite de frontend)
+api.use('/athlete', athleteRoutes);
+
 // Challenges, search, achievements
 api.use('/challenges', challengesRoutes);
 api.use('/search', searchRoutes);

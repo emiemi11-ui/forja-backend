@@ -506,9 +506,23 @@ router.post('/workout/start', async (req, res) => {
   const existing = await getActiveWorkout(req.user.id);
   if (existing) return res.json({ session: normalizeActiveSession(existing) });
 
-  const plan = await getPlannedWorkout(req.user.id);
-  if (!plan || !plan.exercises?.length) {
-    return res.status(400).json({ error: 'Nu ai exerciții în plan.' });
+  // Determină ce plan să pornească: propriu (default) sau coach
+  const source = String(req.body?.source || req.query?.source || 'self').toLowerCase();
+  let plan;
+  if (source === 'coach') {
+    plan = await prisma.workout.findFirst({
+      where: { userId: req.user.id, status: { startsWith: 'COACH:' } },
+      include: { exercises: { orderBy: { order: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    });
+    if (!plan || !plan.exercises?.length) {
+      return res.status(400).json({ error: 'Nu ai un plan de la coach.' });
+    }
+  } else {
+    plan = await getPlannedWorkout(req.user.id);
+    if (!plan || !plan.exercises?.length) {
+      return res.status(400).json({ error: 'Nu ai exerciții în plan.' });
+    }
   }
 
   const active = await prisma.workout.create({

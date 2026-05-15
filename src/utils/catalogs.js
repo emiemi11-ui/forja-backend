@@ -5,7 +5,7 @@ export const EXERCISE_LIBRARY = [
   { id: '13', name: 'Incline DB Press',  muscle: 'Piept',    equip: 'Gantere',   icon: '📈', sets: '3×10', detail: '30 kg',  img: 'https://images.unsplash.com/photo-1581009146145-b5ef050c2e1e?w=200&q=80', anim: '/img/ex-incline.svg' },
   { id: '14', name: 'Lateral Raise',     muscle: 'Umeri',    equip: 'Gantere',   icon: '↔️', sets: '4×12', detail: '12 kg',  img: 'https://images.unsplash.com/photo-1583454110551-21f2fa2afe61?w=200&q=80', anim: '/img/ex-lateral-raise.svg' },
   { id: '15', name: 'Bicep Curl',        muscle: 'Brațe',    equip: 'Gantere',   icon: '💪', sets: '3×12', detail: '16 kg',  img: '/img/ex-bicep-curl.svg', anim: '/img/ex-bicep-curl.svg' },
-  { id: '16', name: 'Cable Fly',         muscle: 'Piept',    equip: 'Cablu',     icon: '🦅', sets: '4×12', detail: '15 kg',  img: 'https://images.unsplash.com/photo-1534368786749-b63e05c92717?w=200&q=80', anim: '/img/ex-cable-fly.svg' },
+  { id: '16', name: 'Cable Fly',         muscle: 'Piept',    equip: 'Cablu',     icon: '🦅', sets: '4×12', detail: '15 kg',  img: 'https://images.unsplash.com/photo-1599058917212-d750089bc07e?w=200&q=80', anim: '/img/ex-cable-fly.svg' },
   { id: '17', name: 'OHP',               muscle: 'Umeri',    equip: 'Bară',      icon: '🎯', sets: '4×6',  detail: '50 kg',  img: 'https://images.unsplash.com/photo-1541534741688-6078c6bfb5c5?w=200&q=80', anim: '/img/ex-ohp.svg' },
   { id: '18', name: 'Plank',             muscle: 'Core',     equip: 'Bodyweight',icon: '🧘', sets: '3×60s',detail: 'Timp',   img: '/img/ex-plank.svg', anim: '/img/ex-plank.svg' },
   { id: '19', name: 'Pull Up',           muscle: 'Spate',    equip: 'Bară',      icon: '🔝', sets: '4×8',  detail: 'BW',     img: '/img/ex-pullup.svg', anim: '/img/ex-pullup.svg' },

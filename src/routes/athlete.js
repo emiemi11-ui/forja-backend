@@ -416,10 +416,19 @@ router.patch('/exercises/:id/toggle', async (req, res) => {
 });
 
 // PATCH /exercises/:id - editare seturi/repetari/kg/timp pauza
-// Atletul poate modifica orice exercitiu din workout-ul lui de plan
+// Atletul poate modifica orice exercitiu din workout-urile sale (plan propriu SAU plan de la coach)
 router.patch('/exercises/:id', async (req, res) => {
   const exercise = await prisma.workoutExercise.findFirst({
-    where: { id: req.params.id, workout: { userId: req.user.id, status: { startsWith: 'PLAN:' } } },
+    where: {
+      id: req.params.id,
+      workout: {
+        userId: req.user.id,
+        OR: [
+          { status: { startsWith: 'PLAN:' } },     // plan propriu
+          { status: { startsWith: 'COACH:' } },    // plan asignat de coach (poate modifica kg-ul propriu)
+        ],
+      },
+    },
   });
   if (!exercise) return res.status(404).json({ error: 'Exercițiu negăsit' });
 

@@ -320,6 +320,7 @@ router.get('/workouts/:id', async (req, res) => {
         equip: lib?.equip || 'Nespecificat',
         sets: exercise.sets,
         reps: exercise.reps,
+        weight: exercise.weight || 0,  // ← include kg
         rest: exercise.restSec,
         img: lib?.img || null,
         anim: lib?.anim || null,
@@ -349,6 +350,7 @@ router.post('/workouts', async (req, res) => {
             name: lib?.name || exercise.name,
             sets: Number(exercise.sets || parsed.sets || 4),
             reps: Number(exercise.reps || parsed.reps || 8),
+            weight: Number(exercise.weight || 0),  // ← NOU
             restSec: Number(exercise.rest || 90),
             order: index,
           };
@@ -388,6 +390,7 @@ router.put('/workouts/:id', async (req, res) => {
             name: lib?.name || exercise.name,
             sets: Number(exercise.sets || parsed.sets || 4),
             reps: Number(exercise.reps || parsed.reps || 8),
+            weight: Number(exercise.weight || 0),  // ← NOU
             restSec: Number(exercise.rest || 90),
             order: index,
           };
@@ -438,6 +441,7 @@ router.post('/workouts/:id/assign', async (req, res) => {
         name: exercise.name,
         sets: exercise.sets,
         reps: exercise.reps,
+        weight: exercise.weight || 0,  // ← copiaza kg-ul setat de coach
         restSec: exercise.restSec,
         done: false,
         order: index,

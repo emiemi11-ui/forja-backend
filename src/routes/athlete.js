@@ -820,6 +820,78 @@ router.get('/workout/today-progress', async (req, res) => {
   });
 });
 
+// NOU: Istoric nutriție pe ultimele 7 zile, agregat per zi (pentru atlet)
+router.get('/nutrition/history-7days', async (req, res) => {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const [logs, goals] = await Promise.all([
+    prisma.nutritionLog.findMany({
+      where: {
+        userId: req.user.id,
+        date: { gte: sevenDaysAgo },
+      },
+      orderBy: { date: 'asc' },
+    }),
+    prisma.userGoals.findUnique({ where: { userId: req.user.id } }),
+  ]);
+
+  const kcalTarget = Number(goals?.kcal || 2200);
+  const proteinTarget = Number(goals?.protein || 150);
+  const carbsTarget = Number(goals?.carbs || 250);
+  const fatTarget = Number(goals?.fat || 70);
+
+  // Construiesc grilă cu 7 zile
+  const dayMap = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    dayMap[key] = {
+      date: key,
+      iso: d.toISOString(),
+      meals: 0,
+      kcal: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      mealList: [],
+    };
+  }
+
+  for (const log of logs) {
+    const key = new Date(log.date).toISOString().slice(0, 10);
+    if (!dayMap[key]) continue;
+    dayMap[key].meals += 1;
+    dayMap[key].kcal += Number(log.kcal || 0);
+    dayMap[key].protein += Number(log.protein || 0);
+    dayMap[key].carbs += Number(log.carbs || 0);
+    dayMap[key].fat += Number(log.fat || 0);
+    dayMap[key].mealList.push({
+      id: log.id,
+      mealType: log.mealType,
+      foodName: log.foodName,
+      kcal: Number(log.kcal || 0),
+      protein: Number(log.protein || 0),
+      carbs: Number(log.carbs || 0),
+      fat: Number(log.fat || 0),
+    });
+  }
+
+  res.json({
+    targets: {
+      kcal: kcalTarget,
+      protein: proteinTarget,
+      carbs: carbsTarget,
+      fat: fatTarget,
+    },
+    days: Object.values(dayMap),
+  });
+});
+
 // Discover (public marketplace)
 router.get('/discover', async (req, res) => {
   const role = String(req.query?.role || '').trim().toUpperCase();

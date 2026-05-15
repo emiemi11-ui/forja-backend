@@ -140,6 +140,90 @@ router.get('/clients/:id', async (req, res) => {
   });
 });
 
+// GET /api/nutritionist/clients/:clientId/nutrition-history-7days
+// Returnează istoricul nutriție al unui client pe ultimele 7 zile, agregat per zi.
+// Doar nutriționistul cu relație ACCEPTED poate vedea aceste date.
+router.get('/clients/:clientId/nutrition-history-7days', async (req, res) => {
+  const link = await prisma.nutClient.findUnique({
+    where: { nutritionistId_clientId: { nutritionistId: req.user.id, clientId: req.params.clientId } },
+    include: { client: { select: { id: true, name: true, avatar: true, avatarUrl: true } }, template: true },
+  });
+  if (!link || link.status !== 'ACCEPTED') {
+    return res.status(403).json({ error: 'Nu ai acces la istoricul acestui client' });
+  }
+
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  sevenDaysAgo.setHours(0, 0, 0, 0);
+
+  const [logs, goals] = await Promise.all([
+    prisma.nutritionLog.findMany({
+      where: { userId: link.client.id, date: { gte: sevenDaysAgo } },
+      orderBy: { date: 'asc' },
+    }),
+    prisma.userGoals.findUnique({ where: { userId: link.client.id } }),
+  ]);
+
+  const kcalTarget = Number(goals?.kcal || link.template?.kcal || 2200);
+  const proteinTarget = Number(goals?.protein || link.template?.protein || 150);
+  const carbsTarget = Number(goals?.carbs || link.template?.carbs || 250);
+  const fatTarget = Number(goals?.fat || link.template?.fat || 70);
+
+  const dayMap = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString().slice(0, 10);
+    dayMap[key] = {
+      date: key,
+      iso: d.toISOString(),
+      meals: 0,
+      kcal: 0,
+      protein: 0,
+      carbs: 0,
+      fat: 0,
+      mealList: [],
+    };
+  }
+
+  for (const log of logs) {
+    const key = new Date(log.date).toISOString().slice(0, 10);
+    if (!dayMap[key]) continue;
+    dayMap[key].meals += 1;
+    dayMap[key].kcal += Number(log.kcal || 0);
+    dayMap[key].protein += Number(log.protein || 0);
+    dayMap[key].carbs += Number(log.carbs || 0);
+    dayMap[key].fat += Number(log.fat || 0);
+    dayMap[key].mealList.push({
+      id: log.id,
+      mealType: log.mealType,
+      foodName: log.foodName,
+      kcal: Number(log.kcal || 0),
+      protein: Number(log.protein || 0),
+      carbs: Number(log.carbs || 0),
+      fat: Number(log.fat || 0),
+    });
+  }
+
+  res.json({
+    client: {
+      id: link.client.id,
+      name: link.client.name,
+      avatar: link.client.avatar,
+      avatarUrl: link.client.avatarUrl,
+    },
+    targets: {
+      kcal: kcalTarget,
+      protein: proteinTarget,
+      carbs: carbsTarget,
+      fat: fatTarget,
+    },
+    days: Object.values(dayMap),
+  });
+});
+
 router.post('/clients/invite', async (req, res) => {
   const { email } = req.body;
   const client = await prisma.user.findUnique({ where: { email } });

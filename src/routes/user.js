@@ -195,6 +195,7 @@ router.get('/dashboard', async (req, res) => {
     exercises: workout.exercises.length,
     assignedAt: (workout.updatedAt || workout.createdAt)?.toISOString?.() || null,
     status: 'active',
+    active: !String(workout.status || '').endsWith(':INACTIVE'),  // ← NOU
     items: workout.exercises.map(normalizeWorkoutExercise),
     isCoachPlan,
   } : null;

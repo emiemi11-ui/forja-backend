@@ -370,8 +370,47 @@ router.get('/coach-plan', async (req, res) => {
       id: coachWorkout.id,
       name: coachWorkout.name,
       coachName: coachLink?.coach?.name || 'Coach',
+      active: !String(coachWorkout.status || '').endsWith(':INACTIVE'),  // ← NOU
       exercises: (coachWorkout.exercises || []).map(normalizeWorkoutExercise),
     },
+  });
+});
+
+// Toggle activare/dezactivare plan (own sau coach)
+// Adaugă/scoate suffix `:INACTIVE` în status
+router.patch('/workouts/:id/toggle-active', async (req, res) => {
+  const workout = await prisma.workout.findFirst({
+    where: {
+      id: req.params.id,
+      userId: req.user.id,
+      OR: [
+        { status: { startsWith: 'PLAN:' } },
+        { status: { startsWith: 'COACH:' } },
+      ],
+    },
+  });
+  if (!workout) return res.status(404).json({ error: 'Plan negăsit' });
+  const currentStatus = String(workout.status || '');
+  const isInactive = currentStatus.endsWith(':INACTIVE');
+  const newStatus = isInactive
+    ? currentStatus.replace(/:INACTIVE$/, '')
+    : `${currentStatus}:INACTIVE`;
+  await prisma.workout.update({ where: { id: workout.id }, data: { status: newStatus } });
+  res.json({ ok: true, active: isInactive });  // returneaza noua stare (toggled)
+});
+
+// Self plan status (pentru WorkoutPage)
+router.get('/self-plan-status', async (req, res) => {
+  const workout = await prisma.workout.findFirst({
+    where: { userId: req.user.id, status: { startsWith: 'PLAN:' } },
+    select: { id: true, status: true },
+    orderBy: { updatedAt: 'desc' },
+  });
+  if (!workout) return res.json({ exists: false, active: false });
+  res.json({
+    exists: true,
+    id: workout.id,
+    active: !String(workout.status || '').endsWith(':INACTIVE'),
   });
 });
 
@@ -511,17 +550,29 @@ router.post('/workout/start', async (req, res) => {
   let plan;
   if (source === 'coach') {
     plan = await prisma.workout.findFirst({
-      where: { userId: req.user.id, status: { startsWith: 'COACH:' } },
+      where: {
+        userId: req.user.id,
+        status: { startsWith: 'COACH:' },
+        NOT: { status: { endsWith: ':INACTIVE' } },  // doar planuri active
+      },
       include: { exercises: { orderBy: { order: 'asc' } } },
       orderBy: { updatedAt: 'desc' },
     });
     if (!plan || !plan.exercises?.length) {
-      return res.status(400).json({ error: 'Nu ai un plan de la coach.' });
+      return res.status(400).json({ error: 'Nu ai un plan activ de la coach.' });
     }
   } else {
-    plan = await getPlannedWorkout(req.user.id);
+    plan = await prisma.workout.findFirst({
+      where: {
+        userId: req.user.id,
+        status: { startsWith: 'PLAN:' },
+        NOT: { status: { endsWith: ':INACTIVE' } },  // doar planuri active
+      },
+      include: { exercises: { orderBy: { order: 'asc' } } },
+      orderBy: { updatedAt: 'desc' },
+    });
     if (!plan || !plan.exercises?.length) {
-      return res.status(400).json({ error: 'Nu ai exerciții în plan.' });
+      return res.status(400).json({ error: 'Nu ai un plan activ.' });
     }
   }
 

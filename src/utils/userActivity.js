@@ -52,6 +52,7 @@ export function findExerciseByName(name = '') {
 export function normalizeWorkoutExercise(exercise) {
   const lib = findExerciseByName(exercise?.name || '');
   const repsLabel = Number.isFinite(exercise?.reps) ? String(exercise.reps) : String(exercise?.reps || '10');
+  const weight = exercise?.weight != null ? Number(exercise.weight) : 0;
   return {
     id: exercise.id,
     libId: lib?.id || null,
@@ -62,7 +63,8 @@ export function normalizeWorkoutExercise(exercise) {
     sets: `${exercise.sets}×${repsLabel}`,
     setsTotal: exercise.sets,
     reps: Number.isFinite(exercise?.reps) ? exercise.reps : repsLabel,
-    detail: lib?.detail || (exercise.weight ? `${exercise.weight} kg` : 'Plan personalizat'),
+    weight,  // FIX: include weight (0 = fara greutate, frontend ascunde)
+    detail: lib?.detail || (weight ? `${weight} kg` : 'Plan personalizat'),
     img: lib?.img || null,
     anim: lib?.anim || null,
     done: !!exercise.done,

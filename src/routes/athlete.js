@@ -425,7 +425,8 @@ router.patch('/exercises/:id', async (req, res) => {
         userId: req.user.id,
         OR: [
           { status: { startsWith: 'PLAN:' } },     // plan propriu
-          { status: { startsWith: 'COACH:' } },    // plan asignat de coach (poate modifica kg-ul propriu)
+          { status: { startsWith: 'COACH:' } },    // plan asignat de coach
+          { status: 'ACTIVE' },                     // sesiune activa in desfasurare
         ],
       },
     },
@@ -445,7 +446,8 @@ router.patch('/exercises/:id', async (req, res) => {
   }
   if (weight !== undefined) {
     const v = Math.max(0, Math.min(500, Number(weight) || 0));
-    data.weight = v || null; // permitem null pentru exercitii fara greutate
+    // Stocam exact valoarea (inclusiv 0) - normalizatorul ascunde la afisare daca = 0
+    data.weight = v;
   }
   if (restSec !== undefined) {
     const v = Math.max(0, Math.min(600, Number(restSec) || 0));
